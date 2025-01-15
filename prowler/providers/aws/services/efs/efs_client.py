@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.efs.efs_service import EFS
+from prowler.providers.common.provider import Provider
 
-efs_client = EFS(current_audit_info)
+efs_client = EFS(Provider.get_global_provider())

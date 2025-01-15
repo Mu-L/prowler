@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.macie.macie_service import Macie
+from prowler.providers.common.provider import Provider
 
-macie_client = Macie(current_audit_info)
+macie_client = Macie(Provider.get_global_provider())

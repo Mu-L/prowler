@@ -38,18 +38,36 @@ for page in get_parameters_by_path_paginator.paginate(
                     regions["aws-us-gov"].append(region["Value"])
                 else:
                     regions["aws"].append(region["Value"])
+                # Sort regions per partition
+                regions["aws"] = sorted(regions["aws"])
+                regions["aws-cn"] = sorted(regions["aws-cn"])
+                regions["aws-us-gov"] = sorted(regions["aws-us-gov"])
         regions_by_service["services"][service["Value"]]["regions"] = regions
 
 # Include the regions for the subservices and the services not present
 logging.info("Updating subservices and the services not present in the original matrix")
 # macie2 --> macie
 regions_by_service["services"]["macie2"] = regions_by_service["services"]["macie"]
+# bedrock-agent --> bedrock
+regions_by_service["services"]["bedrock-agent"] = regions_by_service["services"][
+    "bedrock"
+]
+# cognito --> cognito-idp
+regions_by_service["services"]["cognito"] = regions_by_service["services"][
+    "cognito-idp"
+]
 # opensearch --> es
 regions_by_service["services"]["opensearch"] = regions_by_service["services"]["es"]
 # elbv2 --> elb
 regions_by_service["services"]["elbv2"] = regions_by_service["services"]["elb"]
 # wafv2 --> waf
 regions_by_service["services"]["wafv2"] = regions_by_service["services"]["waf"]
+# wellarchitected --> wellarchitectedtool
+regions_by_service["services"]["wellarchitected"] = regions_by_service["services"][
+    "wellarchitectedtool"
+]
+# sesv2 --> ses
+regions_by_service["services"]["sesv2"] = regions_by_service["services"]["ses"]
 
 # Write to file
 parsed_matrix_regions_aws = f"{os.path.dirname(os.path.realpath(__name__))}/prowler/providers/aws/aws_regions_by_service.json"

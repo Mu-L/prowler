@@ -1,53 +1,34 @@
-from re import search
 from unittest import mock
 
-from boto3 import client, session
-from moto import mock_cloudtrail, mock_s3
+from boto3 import client
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
-from prowler.providers.aws.services.cloudtrail.cloudtrail_service import Trail
-
-AWS_ACCOUNT_NUMBER = 123456789012
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_EU_WEST_1,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 
 class Test_cloudtrail_multi_region_enabled:
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=AWS_ACCOUNT_NUMBER,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=None,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=["us-east-1", "eu-west-1"],
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
-    @mock_cloudtrail
+    @mock_aws
     def test_no_trails(self):
         from prowler.providers.aws.services.cloudtrail.cloudtrail_service import (
             Cloudtrail,
         )
 
-        current_audit_info = self.set_mocked_audit_info()
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_US_EAST_1, AWS_REGION_EU_WEST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.lib.audit_info.audit_info.current_audit_info",
-            new=current_audit_info,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
         ):
             with mock.patch(
                 "prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled.cloudtrail_client",
-                new=Cloudtrail(current_audit_info),
+                new=Cloudtrail(aws_provider),
             ):
                 # Test Check
                 from prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled import (
@@ -56,23 +37,43 @@ class Test_cloudtrail_multi_region_enabled:
 
                 check = cloudtrail_multi_region_enabled()
                 result = check.execute()
-                assert len(result) == len(current_audit_info.audited_regions)
+                assert len(result) == len(aws_provider.identity.audited_regions)
                 for report in result:
-                    assert report.status == "FAIL"
-                    assert search(
-                        "No CloudTrail trails enabled and logging were found",
-                        report.status_extended,
-                    )
-                    assert report.resource_id == "No trails"
-                    assert report.resource_arn == "No trails"
+                    if report.region == AWS_REGION_US_EAST_1:
+                        assert report.status == "FAIL"
+                        assert (
+                            report.status_extended
+                            == "No CloudTrail trails enabled with logging were found."
+                        )
+                        assert report.resource_id == AWS_ACCOUNT_NUMBER
+                        assert (
+                            report.resource_arn
+                            == f"arn:aws:cloudtrail:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:trail"
+                        )
+                        assert report.resource_tags == []
+                    elif report.region == AWS_REGION_EU_WEST_1:
+                        assert report.status == "FAIL"
+                        assert (
+                            report.status_extended
+                            == "No CloudTrail trails enabled with logging were found."
+                        )
+                        assert report.resource_id == AWS_ACCOUNT_NUMBER
+                        assert (
+                            report.resource_arn
+                            == f"arn:aws:cloudtrail:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:trail"
+                        )
+                        assert report.resource_tags == []
 
-    @mock_cloudtrail
-    @mock_s3
-    def test_various_trails_no_login(self):
-        cloudtrail_client_us_east_1 = client("cloudtrail", region_name="us-east-1")
-        s3_client_us_east_1 = client("s3", region_name="us-east-1")
-        cloudtrail_client_eu_west_1 = client("cloudtrail", region_name="eu-west-1")
-        s3_client_eu_west_1 = client("s3", region_name="eu-west-1")
+    @mock_aws
+    def test_various_trails_no_logging(self):
+        cloudtrail_client_us_east_1 = client(
+            "cloudtrail", region_name=AWS_REGION_US_EAST_1
+        )
+        s3_client_us_east_1 = client("s3", region_name=AWS_REGION_US_EAST_1)
+        cloudtrail_client_eu_west_1 = client(
+            "cloudtrail", region_name=AWS_REGION_EU_WEST_1
+        )
+        s3_client_eu_west_1 = client("s3", region_name=AWS_REGION_EU_WEST_1)
         trail_name_us = "trail_test_us"
         bucket_name_us = "bucket_test_us"
         trail_name_eu = "trail_test_eu"
@@ -80,7 +81,7 @@ class Test_cloudtrail_multi_region_enabled:
         s3_client_us_east_1.create_bucket(Bucket=bucket_name_us)
         s3_client_eu_west_1.create_bucket(
             Bucket=bucket_name_eu,
-            CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
+            CreateBucketConfiguration={"LocationConstraint": AWS_REGION_EU_WEST_1},
         )
         _ = cloudtrail_client_us_east_1.create_trail(
             Name=trail_name_us, S3BucketName=bucket_name_us, IsMultiRegionTrail=False
@@ -93,15 +94,17 @@ class Test_cloudtrail_multi_region_enabled:
             Cloudtrail,
         )
 
-        current_audit_info = self.set_mocked_audit_info()
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_US_EAST_1, AWS_REGION_EU_WEST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.lib.audit_info.audit_info.current_audit_info",
-            new=current_audit_info,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
         ):
             with mock.patch(
                 "prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled.cloudtrail_client",
-                new=Cloudtrail(current_audit_info),
+                new=Cloudtrail(aws_provider),
             ):
                 # Test Check
                 from prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled import (
@@ -110,23 +113,43 @@ class Test_cloudtrail_multi_region_enabled:
 
                 check = cloudtrail_multi_region_enabled()
                 result = check.execute()
-                assert len(result) == len(current_audit_info.audited_regions)
+                assert len(result) == len(aws_provider.identity.audited_regions)
                 for report in result:
-                    assert report.status == "FAIL"
-                    assert search(
-                        "No CloudTrail trails enabled and logging were found",
-                        report.status_extended,
-                    )
-                    assert report.resource_id == "No trails"
-                    assert report.resource_arn == "No trails"
+                    if report.region == AWS_REGION_US_EAST_1:
+                        assert report.status == "FAIL"
+                        assert (
+                            report.status_extended
+                            == "No CloudTrail trails enabled with logging were found."
+                        )
+                        assert report.resource_id == AWS_ACCOUNT_NUMBER
+                        assert (
+                            report.resource_arn
+                            == f"arn:aws:cloudtrail:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:trail"
+                        )
+                        assert report.resource_tags == []
+                    elif report.region == AWS_REGION_EU_WEST_1:
+                        assert report.status == "FAIL"
+                        assert (
+                            report.status_extended
+                            == "No CloudTrail trails enabled with logging were found."
+                        )
+                        assert report.resource_id == AWS_ACCOUNT_NUMBER
+                        assert (
+                            report.resource_arn
+                            == f"arn:aws:cloudtrail:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:trail"
+                        )
+                        assert report.resource_tags == []
 
-    @mock_cloudtrail
-    @mock_s3
-    def test_various_trails_with_and_without_login(self):
-        cloudtrail_client_us_east_1 = client("cloudtrail", region_name="us-east-1")
-        s3_client_us_east_1 = client("s3", region_name="us-east-1")
-        cloudtrail_client_eu_west_1 = client("cloudtrail", region_name="eu-west-1")
-        s3_client_eu_west_1 = client("s3", region_name="eu-west-1")
+    @mock_aws
+    def test_various_trails_with_and_without_logging(self):
+        cloudtrail_client_us_east_1 = client(
+            "cloudtrail", region_name=AWS_REGION_US_EAST_1
+        )
+        s3_client_us_east_1 = client("s3", region_name=AWS_REGION_US_EAST_1)
+        cloudtrail_client_eu_west_1 = client(
+            "cloudtrail", region_name=AWS_REGION_EU_WEST_1
+        )
+        s3_client_eu_west_1 = client("s3", region_name=AWS_REGION_EU_WEST_1)
         trail_name_us = "trail_test_us"
         bucket_name_us = "bucket_test_us"
         trail_name_eu = "trail_test_eu"
@@ -134,7 +157,7 @@ class Test_cloudtrail_multi_region_enabled:
         s3_client_us_east_1.create_bucket(Bucket=bucket_name_us)
         s3_client_eu_west_1.create_bucket(
             Bucket=bucket_name_eu,
-            CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
+            CreateBucketConfiguration={"LocationConstraint": AWS_REGION_EU_WEST_1},
         )
         trail_us = cloudtrail_client_us_east_1.create_trail(
             Name=trail_name_us, S3BucketName=bucket_name_us, IsMultiRegionTrail=False
@@ -149,15 +172,17 @@ class Test_cloudtrail_multi_region_enabled:
             Cloudtrail,
         )
 
-        current_audit_info = self.set_mocked_audit_info()
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_US_EAST_1, AWS_REGION_EU_WEST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.lib.audit_info.audit_info.current_audit_info",
-            new=current_audit_info,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
         ):
             with mock.patch(
                 "prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled.cloudtrail_client",
-                new=Cloudtrail(current_audit_info),
+                new=Cloudtrail(aws_provider),
             ):
                 # Test Check
                 from prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled import (
@@ -166,32 +191,42 @@ class Test_cloudtrail_multi_region_enabled:
 
                 check = cloudtrail_multi_region_enabled()
                 result = check.execute()
-                assert len(result) == len(current_audit_info.audited_regions)
+                assert len(result) == len(aws_provider.identity.audited_regions)
                 for report in result:
                     if report.resource_id == trail_name_us:
                         assert report.status == "PASS"
-                        assert search(
-                            "is not multiregion and it is logging",
-                            report.status_extended,
+                        assert (
+                            report.status_extended
+                            == f"Trail {trail_name_us} is not multiregion and it is logging."
                         )
                         assert report.resource_id == trail_name_us
                         assert report.resource_arn == trail_us["TrailARN"]
+                        assert report.resource_tags == []
+                        assert report.region == AWS_REGION_US_EAST_1
                     else:
                         assert report.status == "FAIL"
-                        assert search(
-                            "No CloudTrail trails enabled and logging were found",
-                            report.status_extended,
+                        assert (
+                            report.status_extended
+                            == "No CloudTrail trails enabled with logging were found."
                         )
-                        assert report.resource_id == "No trails"
-                        assert report.resource_arn == "No trails"
+                        assert report.resource_id == AWS_ACCOUNT_NUMBER
+                        assert (
+                            report.resource_arn
+                            == f"arn:aws:cloudtrail:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:trail"
+                        )
+                        assert report.resource_tags == []
+                        assert report.region == AWS_REGION_EU_WEST_1
 
-    @mock_cloudtrail
-    @mock_s3
-    def test_trail_multiregion_logging_and_single_region_not_login(self):
-        cloudtrail_client_us_east_1 = client("cloudtrail", region_name="us-east-1")
-        s3_client_us_east_1 = client("s3", region_name="us-east-1")
-        cloudtrail_client_eu_west_1 = client("cloudtrail", region_name="eu-west-1")
-        s3_client_eu_west_1 = client("s3", region_name="eu-west-1")
+    @mock_aws
+    def test_trail_multiregion_logging_and_single_region_not_logging(self):
+        cloudtrail_client_us_east_1 = client(
+            "cloudtrail", region_name=AWS_REGION_US_EAST_1
+        )
+        s3_client_us_east_1 = client("s3", region_name=AWS_REGION_US_EAST_1)
+        cloudtrail_client_eu_west_1 = client(
+            "cloudtrail", region_name=AWS_REGION_EU_WEST_1
+        )
+        s3_client_eu_west_1 = client("s3", region_name=AWS_REGION_EU_WEST_1)
         trail_name_us = "trail_test_us"
         bucket_name_us = "bucket_test_us"
         trail_name_eu = "aaaaa"
@@ -199,7 +234,7 @@ class Test_cloudtrail_multi_region_enabled:
         s3_client_us_east_1.create_bucket(Bucket=bucket_name_us)
         s3_client_eu_west_1.create_bucket(
             Bucket=bucket_name_eu,
-            CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
+            CreateBucketConfiguration={"LocationConstraint": AWS_REGION_EU_WEST_1},
         )
         trail_us = cloudtrail_client_us_east_1.create_trail(
             Name=trail_name_us, S3BucketName=bucket_name_us, IsMultiRegionTrail=True
@@ -214,68 +249,121 @@ class Test_cloudtrail_multi_region_enabled:
             Cloudtrail,
         )
 
-        current_audit_info = self.set_mocked_audit_info()
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_US_EAST_1, AWS_REGION_EU_WEST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.lib.audit_info.audit_info.current_audit_info",
-            new=current_audit_info,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
         ):
             with mock.patch(
                 "prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled.cloudtrail_client",
-                new=Cloudtrail(current_audit_info),
-            ) as cloudtrail_client:
+                new=Cloudtrail(aws_provider),
+            ):
                 # Test Check
                 from prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled import (
                     cloudtrail_multi_region_enabled,
                 )
 
-                ##############################################################################################################
-                # Only until moto issue is solved (Right now is not getting shadow us-east-1 trail status in eu-west-1 region)
-                cloudtrail_client.trails = [
-                    Trail(
-                        name=trail_name_us,
-                        is_multiregion=True,
-                        home_region="us-east-1",
-                        arn=trail_us["TrailARN"],
-                        region="us-east-1",
-                        is_logging=True,
-                    ),
-                    Trail(
-                        name=trail_name_eu,
-                        is_multiregion=False,
-                        home_region="eu-west-1",
-                        arn="",
-                        region="eu-west-1",
-                        is_logging=False,
-                    ),
-                    Trail(
-                        name=trail_name_us,
-                        is_multiregion=True,
-                        home_region="us-east-1",
-                        arn=trail_us["TrailARN"],
-                        region="eu-west-1",
-                        is_logging=True,
-                    ),
-                ]
-                ##############################################################################################################
+                check = cloudtrail_multi_region_enabled()
+                result = check.execute()
+                assert len(result) == len(aws_provider.identity.audited_regions)
+                for report in result:
+                    if report.region == AWS_REGION_US_EAST_1:
+                        assert report.status == "PASS"
+                        assert (
+                            report.status_extended
+                            == f"Trail {trail_name_us} is multiregion and it is logging."
+                        )
+                        assert report.resource_id == trail_name_us
+                        assert report.resource_arn == trail_us["TrailARN"]
+                        assert report.resource_tags == []
+                    elif report.region == AWS_REGION_EU_WEST_1:
+                        assert report.status == "PASS"
+                        assert (
+                            report.status_extended
+                            == f"Trail {trail_name_us} is multiregion and it is logging."
+                        )
+                        assert report.resource_id == trail_name_us
+                        assert report.resource_arn == trail_us["TrailARN"]
+                        assert report.resource_tags == []
+
+    @mock_aws
+    def test_access_denied(self):
+        from prowler.providers.aws.services.cloudtrail.cloudtrail_service import (
+            Cloudtrail,
+        )
+
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_US_EAST_1, AWS_REGION_EU_WEST_1]
+        )
+
+        with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ):
+            with mock.patch(
+                "prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled.cloudtrail_client",
+                new=Cloudtrail(aws_provider),
+            ) as service_client:
+                # Test Check
+                from prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled import (
+                    cloudtrail_multi_region_enabled,
+                )
+
+                service_client.trails = None
+                check = cloudtrail_multi_region_enabled()
+                result = check.execute()
+                assert len(result) == 0
+
+    @mock_aws
+    def test_trail_multi_region_auditing_other_region(self):
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        cloudtrail_client_us_east_1 = client(
+            "cloudtrail", region_name=AWS_REGION_US_EAST_1
+        )
+        s3_client_us_east_1 = client("s3", region_name=AWS_REGION_US_EAST_1)
+
+        trail_name_us = "trail_test_us"
+        bucket_name_us = "bucket_test_us"
+
+        s3_client_us_east_1.create_bucket(Bucket=bucket_name_us)
+
+        _ = cloudtrail_client_us_east_1.create_trail(
+            Name=trail_name_us, S3BucketName=bucket_name_us, IsMultiRegionTrail=True
+        )
+
+        from prowler.providers.aws.services.cloudtrail.cloudtrail_service import (
+            Cloudtrail,
+        )
+
+        with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ):
+            with mock.patch(
+                "prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled.cloudtrail_client",
+                new=Cloudtrail(aws_provider),
+            ):
+                # Test Check
+                from prowler.providers.aws.services.cloudtrail.cloudtrail_multi_region_enabled.cloudtrail_multi_region_enabled import (
+                    cloudtrail_multi_region_enabled,
+                )
 
                 check = cloudtrail_multi_region_enabled()
                 result = check.execute()
-                assert len(result) == len(current_audit_info.audited_regions)
-                for report in result:
-                    if report.region == "us-east-1":
-                        assert report.status == "PASS"
-                        assert search(
-                            f"Trail {trail_name_us} is multiregion and it is logging",
-                            report.status_extended,
-                        )
-                        assert report.resource_id == trail_name_us
-                        assert report.resource_arn == trail_us["TrailARN"]
-                    elif report.region == "eu-west-1":
-                        assert report.status == "PASS"
-                        assert search(
-                            f"Trail {trail_name_us} is multiregion and it is logging",
-                            report.status_extended,
-                        )
-                        assert report.resource_id == trail_name_us
-                        assert report.resource_arn == trail_us["TrailARN"]
+                # FAIL since the multiregion trail it is in another region and the logging status cannot be checked
+                assert len(result) == 1
+                assert result[0].resource_id == AWS_ACCOUNT_NUMBER
+                assert (
+                    result[0].resource_arn
+                    == f"arn:aws:cloudtrail:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:trail"
+                )
+                assert result[0].status == "FAIL"
+                assert (
+                    result[0].status_extended
+                    == "No CloudTrail trails enabled with logging were found."
+                )
+                assert result[0].region == AWS_REGION_EU_WEST_1
+                assert result[0].resource_tags == []

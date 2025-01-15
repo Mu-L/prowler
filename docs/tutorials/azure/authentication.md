@@ -18,10 +18,10 @@ prowler azure --sp-env-auth
 prowler azure --az-cli-auth
 
 # To use browser authentication
-prowler azure --browser-auth
+prowler azure --browser-auth --tenant-id "XXXXXXXX"
 
 # To use managed identity auth
 prowler azure --managed-identity-auth
 ```
 
-To use Prowler you need to set up also the permissions required to access your resources in your Azure account, to more details refer to [Requirements](/getting-started/requirements)
+To use Prowler you need to set up also the permissions required to access your resources in your Azure account, to more details refer to [Requirements](../../getting-started/requirements.md)

@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.vpc.vpc_service import VPC
+from prowler.providers.common.provider import Provider
 
-vpc_client = VPC(current_audit_info)
+vpc_client = VPC(Provider.get_global_provider())

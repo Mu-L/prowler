@@ -1,37 +1,22 @@
-import threading
+from typing import Optional
 
 from botocore.client import ClientError
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
-################## SecurityHub
-class SecurityHub:
-    def __init__(self, audit_info):
-        self.service = "securityhub"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class SecurityHub(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.securityhubs = []
-        self.__threading_call__(self.__describe_hub__)
+        self.__threading_call__(self._describe_hub)
+        self.__threading_call__(self._list_tags, self.securityhubs)
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __describe_hub__(self, regional_client):
+    def _describe_hub(self, regional_client):
         logger.info("SecurityHub - Describing Hub...")
         try:
             # Check if SecurityHub is active
@@ -42,8 +27,10 @@ class SecurityHub:
                 if e.response["Error"]["Code"] == "InvalidAccessException":
                     self.securityhubs.append(
                         SecurityHubHub(
-                            arn="",
-                            id="Security Hub",
+                            arn=self.get_unknown_arn(
+                                region=regional_client.region, resource_type="hub"
+                            ),
+                            id="hub/unknown",
                             status="NOT_AVAILABLE",
                             standards="",
                             integrations="",
@@ -88,8 +75,10 @@ class SecurityHub:
                     # SecurityHub is filtered
                     self.securityhubs.append(
                         SecurityHubHub(
-                            arn="",
-                            id="Security Hub",
+                            arn=self.get_unknown_arn(
+                                region=regional_client.region, resource_type="hub"
+                            ),
+                            id="hub/unknown",
                             status="NOT_AVAILABLE",
                             standards="",
                             integrations="",
@@ -102,6 +91,19 @@ class SecurityHub:
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
+    def _list_tags(self, resource: any):
+        try:
+            if resource.status != "NOT_AVAILABLE":
+                resource.tags = [
+                    self.regional_clients[resource.region].list_tags_for_resource(
+                        ResourceArn=resource.arn
+                    )["Tags"]
+                ]
+        except Exception as error:
+            logger.error(
+                f"{resource.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+            )
+
 
 class SecurityHubHub(BaseModel):
     arn: str
@@ -110,3 +112,4 @@ class SecurityHubHub(BaseModel):
     standards: str
     integrations: str
     region: str
+    tags: Optional[list]

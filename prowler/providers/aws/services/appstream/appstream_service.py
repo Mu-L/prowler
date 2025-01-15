@@ -1,38 +1,22 @@
-import threading
 from typing import Optional
 
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## AppStream
-class AppStream:
-    def __init__(self, audit_info):
-        self.service = "appstream"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class AppStream(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.fleets = []
-        self.__threading_call__(self.__describe_fleets__)
-        self.__list_tags_for_resource__()
+        self.__threading_call__(self._describe_fleets)
+        self._list_tags_for_resource()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __describe_fleets__(self, regional_client):
+    def _describe_fleets(self, regional_client):
         logger.info("AppStream - Describing Fleets...")
         try:
             describe_fleets_paginator = regional_client.get_paginator("describe_fleets")
@@ -66,7 +50,7 @@ class AppStream:
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __list_tags_for_resource__(self):
+    def _list_tags_for_resource(self):
         logger.info("AppStream - List Tags...")
         try:
             for fleet in self.fleets:

@@ -1,86 +1,63 @@
 import io
 import zipfile
+from datetime import datetime, timezone
 from unittest.mock import patch
 
-from boto3 import client, resource, session
-from moto import mock_ec2, mock_iam, mock_lambda, mock_s3, mock_secretsmanager
-from moto.core import DEFAULT_ACCOUNT_ID
+from boto3 import client, resource
+from freezegun import freeze_time
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
 from prowler.providers.aws.services.secretsmanager.secretsmanager_service import (
     SecretsManager,
 )
-
-# Mock Test Region
-AWS_REGION = "eu-west-1"
+from tests.providers.aws.utils import AWS_REGION_EU_WEST_1, set_mocked_aws_provider
 
 
 # Mock generate_regional_clients()
-def mock_generate_regional_clients(service, audit_info):
-    regional_client = audit_info.audit_session.client(service, region_name=AWS_REGION)
-    regional_client.region = AWS_REGION
-    return {AWS_REGION: regional_client}
+def mock_generate_regional_clients(provider, service):
+    regional_client = provider._session.current_session.client(
+        service, region_name=AWS_REGION_EU_WEST_1
+    )
+    regional_client.region = AWS_REGION_EU_WEST_1
+    return {AWS_REGION_EU_WEST_1: regional_client}
 
 
 # Patch every AWS call using Boto3 and generate_regional_clients to have 1 client
 @patch(
-    "prowler.providers.aws.services.secretsmanager.secretsmanager_service.generate_regional_clients",
+    "prowler.providers.aws.aws_provider.AwsProvider.generate_regional_clients",
     new=mock_generate_regional_clients,
 )
 class Test_SecretsManager_Service:
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=DEFAULT_ACCOUNT_ID,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=None,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test SecretsManager Client
-    @mock_secretsmanager
-    def test__get_client__(self):
-        audit_info = self.set_mocked_audit_info()
-        secretsmanager = SecretsManager(audit_info)
+    @mock_aws
+    def test_get_client(self):
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        secretsmanager = SecretsManager(aws_provider)
         assert (
-            secretsmanager.regional_clients[AWS_REGION].__class__.__name__
+            secretsmanager.regional_clients[AWS_REGION_EU_WEST_1].__class__.__name__
             == "SecretsManager"
         )
 
     # Test SecretsManager Session
-    @mock_secretsmanager
+    @mock_aws
     def test__get_session__(self):
-        audit_info = self.set_mocked_audit_info()
-        secretsmanager = SecretsManager(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        secretsmanager = SecretsManager(aws_provider)
         assert secretsmanager.session.__class__.__name__ == "Session"
 
     # Test SecretsManager Service
-    @mock_secretsmanager
+    @mock_aws
     def test__get_service__(self):
-        audit_info = self.set_mocked_audit_info()
-        secretsmanager = SecretsManager(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        secretsmanager = SecretsManager(aws_provider)
         assert secretsmanager.service == "secretsmanager"
 
-    @mock_secretsmanager
-    @mock_lambda
-    @mock_ec2
-    @mock_iam
-    @mock_s3
-    def test__list_secrets__(self):
-        secretsmanager_client = client("secretsmanager", region_name=AWS_REGION)
+    @freeze_time("2023-04-09")
+    @mock_aws
+    def test_list_secrets(self):
+        secretsmanager_client = client(
+            "secretsmanager", region_name=AWS_REGION_EU_WEST_1
+        )
         # Create Secret
         resp = secretsmanager_client.create_secret(
             Name="test-secret",
@@ -92,17 +69,17 @@ class Test_SecretsManager_Service:
         secret_arn = resp["ARN"]
         secret_name = resp["Name"]
         # Create IAM Lambda Role
-        iam_client = client("iam", region_name=AWS_REGION)
+        iam_client = client("iam", region_name=AWS_REGION_EU_WEST_1)
         iam_role = iam_client.create_role(
             RoleName="rotation-lambda-role",
             AssumeRolePolicyDocument="test-policy",
             Path="/",
         )["Role"]["Arn"]
         # Create S3 Bucket
-        s3_client = resource("s3", region_name=AWS_REGION)
+        s3_client = resource("s3", region_name=AWS_REGION_EU_WEST_1)
         s3_client.create_bucket(
             Bucket="test-bucket",
-            CreateBucketConfiguration={"LocationConstraint": AWS_REGION},
+            CreateBucketConfiguration={"LocationConstraint": AWS_REGION_EU_WEST_1},
         )
         # Create Lambda Code
         zip_output = io.BytesIO()
@@ -118,7 +95,7 @@ class Test_SecretsManager_Service:
         zip_file.close()
         zip_output.seek(0)
         # Create Rotation Lambda
-        lambda_client = client("lambda", region_name=AWS_REGION)
+        lambda_client = client("lambda", region_name=AWS_REGION_EU_WEST_1)
         resp = lambda_client.create_function(
             FunctionName="rotation-lambda",
             Runtime="python3.7",
@@ -149,16 +126,53 @@ class Test_SecretsManager_Service:
         )
 
         # Set partition for the service
-        audit_info = self.set_mocked_audit_info()
-        secretsmanager = SecretsManager(audit_info)
-
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        secretsmanager = SecretsManager(aws_provider)
         assert len(secretsmanager.secrets) == 1
         assert secretsmanager.secrets
-        assert secretsmanager.secrets[secret_name]
-        assert secretsmanager.secrets[secret_name].name == secret_name
-        assert secretsmanager.secrets[secret_name].arn == secret_arn
-        assert secretsmanager.secrets[secret_name].region == AWS_REGION
-        assert secretsmanager.secrets[secret_name].rotation_enabled is True
-        assert secretsmanager.secrets[secret_name].tags == [
+        assert secretsmanager.secrets[secret_arn]
+        assert secretsmanager.secrets[secret_arn].name == secret_name
+        assert secretsmanager.secrets[secret_arn].arn == secret_arn
+        assert secretsmanager.secrets[secret_arn].region == AWS_REGION_EU_WEST_1
+        assert secretsmanager.secrets[secret_arn].rotation_enabled is True
+        assert secretsmanager.secrets[
+            secret_arn
+        ].last_accessed_date == datetime.min.replace(tzinfo=timezone.utc)
+        assert (
+            secretsmanager.secrets[secret_arn].last_rotated_date.date()
+            == datetime(2023, 4, 9).date()
+        )
+        assert secretsmanager.secrets[secret_arn].tags == [
             {"Key": "test", "Value": "test"},
         ]
+
+    @mock_aws
+    def test_get_resource_policy(self):
+        secretsmanager_client = client(
+            "secretsmanager", region_name=AWS_REGION_EU_WEST_1
+        )
+        secret = secretsmanager_client.create_secret(
+            Name="test-secret-policy",
+        )
+        secretsmanager_client.put_resource_policy(
+            SecretId=secret["ARN"],
+            ResourcePolicy='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":"secretsmanager:GetSecretValue","Resource":"*"}]}',
+        )
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        secretsmanager = SecretsManager(aws_provider)
+
+        assert len(secretsmanager.secrets) == 1
+        assert secretsmanager.secrets[secret["ARN"]].name == "test-secret-policy"
+        assert secretsmanager.secrets[secret["ARN"]].arn == secret["ARN"]
+        assert secretsmanager.secrets[secret["ARN"]].region == AWS_REGION_EU_WEST_1
+        assert secretsmanager.secrets[secret["ARN"]].policy == {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "secretsmanager:GetSecretValue",
+                    "Resource": "*",
+                }
+            ],
+        }

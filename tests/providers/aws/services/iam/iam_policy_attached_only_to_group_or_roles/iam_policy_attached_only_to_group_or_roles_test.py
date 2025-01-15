@@ -1,13 +1,18 @@
 from json import dumps
-from re import search
 from unittest import mock
 
 from boto3 import client
-from moto import mock_iam
+from moto import mock_aws
+
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 
 class Test_iam_policy_attached_only_to_group_or_roles:
-    @mock_iam
+    @mock_aws
     def test_iam_user_attached_policy(self):
         result = []
         iam_client = client("iam")
@@ -25,12 +30,15 @@ class Test_iam_policy_attached_only_to_group_or_roles:
         )["Policy"]["Arn"]
         iam_client.attach_user_policy(UserName=user, PolicyArn=policyArn)
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
         from prowler.providers.aws.services.iam.iam_service import IAM
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles.iam_client",
-            new=IAM(current_audit_info),
+            new=IAM(aws_provider),
         ):
             from prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles import (
                 iam_policy_attached_only_to_group_or_roles,
@@ -39,8 +47,18 @@ class Test_iam_policy_attached_only_to_group_or_roles:
             check = iam_policy_attached_only_to_group_or_roles()
             result = check.execute()
             assert result[0].status == "FAIL"
+            assert (
+                result[0].status_extended
+                == f"User {user} has the policy {policy_name} attached."
+            )
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_id == f"{user}/{policy_name}"
+            assert (
+                result[0].resource_arn
+                == f"arn:aws:iam::{AWS_ACCOUNT_NUMBER}:user/{user}"
+            )
 
-    @mock_iam
+    @mock_aws
     def test_iam_user_attached_and_inline_policy(self):
         result = []
         iam_client = client("iam")
@@ -61,12 +79,15 @@ class Test_iam_policy_attached_only_to_group_or_roles:
         )["Policy"]["Arn"]
         iam_client.attach_user_policy(UserName=user, PolicyArn=policyArn)
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
         from prowler.providers.aws.services.iam.iam_service import IAM
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles.iam_client",
-            new=IAM(current_audit_info),
+            new=IAM(aws_provider),
         ):
             from prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles import (
                 iam_policy_attached_only_to_group_or_roles,
@@ -76,17 +97,26 @@ class Test_iam_policy_attached_only_to_group_or_roles:
             result = check.execute()
             assert len(result) == 2
             assert result[0].status == "FAIL"
-            assert result[1].status == "FAIL"
-            assert search(
-                f"User {user} has attached the following policy",
-                result[0].status_extended,
+            assert (
+                result[0].status_extended
+                == f"User {user} has the policy {policyName} attached."
             )
-            assert search(
-                f"User {user} has the following inline policy",
-                result[1].status_extended,
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_id == f"{user}/{policyName}"
+
+            assert result[0].status == "FAIL"
+            assert (
+                result[0].status_extended
+                == f"User {user} has the policy {policyName} attached."
+            )
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_id == f"{user}/{policyName}"
+            assert (
+                result[0].resource_arn
+                == f"arn:aws:iam::{AWS_ACCOUNT_NUMBER}:user/{user}"
             )
 
-    @mock_iam
+    @mock_aws
     def test_iam_user_inline_policy(self):
         result = []
         iam_client = client("iam")
@@ -103,12 +133,18 @@ class Test_iam_policy_attached_only_to_group_or_roles:
             UserName=user, PolicyName=policyName, PolicyDocument=dumps(policyDocument)
         )
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
+        # Tag the user
+        iam_client.tag_user(UserName=user, Tags=[{"Key": "tag1", "Value": "value1"}])
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
         from prowler.providers.aws.services.iam.iam_service import IAM
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles.iam_client",
-            new=IAM(current_audit_info),
+            new=IAM(aws_provider),
         ):
             from prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles import (
                 iam_policy_attached_only_to_group_or_roles,
@@ -117,20 +153,37 @@ class Test_iam_policy_attached_only_to_group_or_roles:
             check = iam_policy_attached_only_to_group_or_roles()
             result = check.execute()
             assert result[0].status == "FAIL"
+            assert (
+                result[0].status_extended
+                == f"User {user} has the inline policy {policyName} attached."
+            )
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_id == f"{user}/{policyName}"
+            assert (
+                result[0].resource_arn
+                == f"arn:aws:iam::{AWS_ACCOUNT_NUMBER}:user/{user}"
+            )
+            assert result[0].resource_tags == [{"Key": "tag1", "Value": "value1"}]
 
-    @mock_iam
+    @mock_aws
     def test_iam_user_no_policies(self):
         result = []
         iam_client = client("iam")
         user = "test_no_policies"
         iam_client.create_user(UserName=user)
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
+        # Tag the user
+        iam_client.tag_user(UserName=user, Tags=[{"Key": "tag1", "Value": "value1"}])
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
         from prowler.providers.aws.services.iam.iam_service import IAM
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles.iam_client",
-            new=IAM(current_audit_info),
+            new=IAM(aws_provider),
         ):
             from prowler.providers.aws.services.iam.iam_policy_attached_only_to_group_or_roles.iam_policy_attached_only_to_group_or_roles import (
                 iam_policy_attached_only_to_group_or_roles,
@@ -139,3 +192,14 @@ class Test_iam_policy_attached_only_to_group_or_roles:
             check = iam_policy_attached_only_to_group_or_roles()
             result = check.execute()
             assert result[0].status == "PASS"
+            assert (
+                result[0].status_extended
+                == f"User {user} has no inline or attached policies."
+            )
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_id == user
+            assert (
+                result[0].resource_arn
+                == f"arn:aws:iam::{AWS_ACCOUNT_NUMBER}:user/{user}"
+            )
+            assert result[0].resource_tags == [{"Key": "tag1", "Value": "value1"}]

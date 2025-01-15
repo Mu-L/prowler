@@ -2,19 +2,34 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import botocore
-from boto3 import session
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
-from prowler.providers.aws.services.codebuild.codebuild_service import Codebuild
+from prowler.providers.aws.services.codebuild.codebuild_service import (
+    Build,
+    CloudWatchLogs,
+    Codebuild,
+    ExportConfig,
+    Project,
+    ReportGroup,
+    s3Logs,
+)
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_COMMERCIAL_PARTITION,
+    AWS_REGION_EU_WEST_1,
+    set_mocked_aws_provider,
+)
 
-# Mock Test Region
-AWS_REGION = "eu-west-1"
-AWS_ACCOUNT_NUMBER = 123456789012
-
-# last time invoked time
+project_name = "test"
+project_arn = f"arn:{AWS_COMMERCIAL_PARTITION}:codebuild:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:project/{project_name}"
+build_spec_project_arn = "arn:aws:s3:::my-codebuild-sample2/buildspec.yml"
+source_type = "BITBUCKET"
+build_id = "test:93f838a7-cd20-48ae-90e5-c10fbbc78ca6"
 last_invoked_time = datetime.now() - timedelta(days=2)
+bitbucket_url = "https://bitbucket.org/example/repo.git"
+secondary_bitbucket_url = "https://bitbucket.org/example/secondary-repo.git"
 
+report_group_arn = f"arn:{AWS_COMMERCIAL_PARTITION}:codebuild:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:report-group/{project_name}"
 
 # Mocking batch_get_projects
 make_api_call = botocore.client.BaseClient._make_api_call
@@ -22,82 +37,143 @@ make_api_call = botocore.client.BaseClient._make_api_call
 
 def mock_make_api_call(self, operation_name, kwarg):
     if operation_name == "ListProjects":
-        return {"projects": ["test"]}
-    if operation_name == "ListBuildsForProject":
-        return {"ids": ["test:93f838a7-cd20-48ae-90e5-c10fbbc78ca6"]}
-    if operation_name == "BatchGetBuilds":
+        return {"projects": [project_name]}
+    elif operation_name == "ListBuildsForProject":
+        return {"ids": [build_id]}
+    elif operation_name == "BatchGetBuilds":
         return {"builds": [{"endTime": last_invoked_time}]}
-    if operation_name == "BatchGetProjects":
+    elif operation_name == "BatchGetProjects":
         return {
             "projects": [
                 {
                     "source": {
-                        "buildspec": "arn:aws:s3:::my-codebuild-sample2/buildspec.yml"
-                    }
+                        "type": source_type,
+                        "location": bitbucket_url,
+                        "buildspec": build_spec_project_arn,
+                    },
+                    "secondarySources": [
+                        {
+                            "type": source_type,
+                            "location": secondary_bitbucket_url,
+                            "buildspec": "",
+                        }
+                    ],
+                    "logsConfig": {
+                        "cloudWatchLogs": {
+                            "status": "ENABLED",
+                            "groupName": project_name,
+                            "streamName": project_name,
+                        },
+                        "s3Logs": {
+                            "status": "ENABLED",
+                            "location": "test-bucket",
+                            "encryptionDisabled": False,
+                        },
+                    },
+                    "tags": [{"key": "Name", "value": project_name}],
                 }
             ]
         }
+    elif operation_name == "ListReportGroups":
+        return {"reportGroups": [report_group_arn]}
+    elif operation_name == "BatchGetReportGroups":
+        return {
+            "reportGroups": [
+                {
+                    "name": project_name,
+                    "arn": report_group_arn,
+                    "exportConfig": {
+                        "exportConfigType": "S3",
+                        "s3Destination": {
+                            "bucket": "test-bucket",
+                            "path": "test-path",
+                            "encryptionKey": "arn:aws:kms:eu-west-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+                            "encryptionDisabled": False,
+                        },
+                    },
+                    "tags": [{"key": "Name", "value": project_name}],
+                    "status": "ACTIVE",
+                }
+            ]
+        }
+
     return make_api_call(self, operation_name, kwarg)
 
 
 # Mock generate_regional_clients()
-def mock_generate_regional_clients(service, audit_info):
-    regional_client = audit_info.audit_session.client(service, region_name=AWS_REGION)
-    regional_client.region = AWS_REGION
-    return {AWS_REGION: regional_client}
+def mock_generate_regional_clients(provider, service):
+    regional_client = provider._session.current_session.client(
+        service, region_name=AWS_REGION_EU_WEST_1
+    )
+    regional_client.region = AWS_REGION_EU_WEST_1
+    return {AWS_REGION_EU_WEST_1: regional_client}
 
 
-@patch("botocore.client.BaseClient._make_api_call", new=mock_make_api_call)
-@patch(
-    "prowler.providers.aws.services.codebuild.codebuild_service.generate_regional_clients",
-    new=mock_generate_regional_clients,
-)
 class Test_Codebuild_Service:
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=AWS_ACCOUNT_NUMBER,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=None,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
+    @patch("botocore.client.BaseClient._make_api_call", new=mock_make_api_call)
+    @patch(
+        "prowler.providers.aws.aws_provider.AwsProvider.generate_regional_clients",
+        new=mock_generate_regional_clients,
+    )
+    @mock_aws
+    def test_codebuild_service(self):
+        codebuild = Codebuild(set_mocked_aws_provider())
 
-    # Test Codebuild Session
-    def test__get_session__(self):
-        codebuild = Codebuild(current_audit_info)
         assert codebuild.session.__class__.__name__ == "Session"
-
-    # Test Codebuild Service
-    def test__get_service__(self):
-        codebuild = Codebuild(current_audit_info)
         assert codebuild.service == "codebuild"
-
-    def test__list_projects__(self):
-        codebuild = Codebuild(current_audit_info)
+        # Asserttions related with projects
         assert len(codebuild.projects) == 1
-        assert codebuild.projects[0].name == "test"
-        assert codebuild.projects[0].region == AWS_REGION
-
-    def test__list_builds_for_project__(self):
-        codebuild = Codebuild(current_audit_info)
-        assert len(codebuild.projects) == 1
-        assert codebuild.projects[0].name == "test"
-        assert codebuild.projects[0].region == AWS_REGION
-        assert codebuild.projects[0].last_invoked_time == last_invoked_time
+        assert isinstance(codebuild.projects, dict)
+        assert isinstance(codebuild.projects[project_arn], Project)
+        assert codebuild.projects[project_arn].name == project_name
+        assert codebuild.projects[project_arn].arn == project_arn
+        assert codebuild.projects[project_arn].region == AWS_REGION_EU_WEST_1
+        assert codebuild.projects[project_arn].last_invoked_time == last_invoked_time
+        assert codebuild.projects[project_arn].last_build == Build(id=build_id)
+        assert codebuild.projects[project_arn].buildspec == build_spec_project_arn
+        assert bitbucket_url == codebuild.projects[project_arn].source.location
         assert (
-            codebuild.projects[0].buildspec
-            == "arn:aws:s3:::my-codebuild-sample2/buildspec.yml"
+            secondary_bitbucket_url
+            in codebuild.projects[project_arn].secondary_sources[0].location
+        )
+        assert isinstance(codebuild.projects[project_arn].s3_logs, s3Logs)
+        assert codebuild.projects[project_arn].s3_logs.enabled
+        assert codebuild.projects[project_arn].s3_logs.bucket_location == "test-bucket"
+        assert codebuild.projects[project_arn].s3_logs.encrypted
+        assert isinstance(
+            codebuild.projects[project_arn].cloudwatch_logs, CloudWatchLogs
+        )
+        assert codebuild.projects[project_arn].cloudwatch_logs.enabled
+        assert (
+            codebuild.projects[project_arn].cloudwatch_logs.group_name == project_name
+        )
+        assert (
+            codebuild.projects[project_arn].cloudwatch_logs.stream_name == project_name
+        )
+        assert codebuild.projects[project_arn].tags[0]["key"] == "Name"
+        assert codebuild.projects[project_arn].tags[0]["value"] == project_name
+        # Asserttions related with report groups
+        assert len(codebuild.report_groups) == 1
+        assert isinstance(codebuild.report_groups, dict)
+        assert isinstance(codebuild.report_groups[report_group_arn], ReportGroup)
+        assert codebuild.report_groups[report_group_arn].name == project_name
+        assert codebuild.report_groups[report_group_arn].arn == report_group_arn
+        assert codebuild.report_groups[report_group_arn].region == AWS_REGION_EU_WEST_1
+        assert codebuild.report_groups[report_group_arn].status == "ACTIVE"
+        assert isinstance(
+            codebuild.report_groups[report_group_arn].export_config, ExportConfig
+        )
+        assert codebuild.report_groups[report_group_arn].export_config.type == "S3"
+        assert (
+            codebuild.report_groups[report_group_arn].export_config.bucket_location
+            == "s3://test-bucket/test-path"
+        )
+        assert (
+            codebuild.report_groups[report_group_arn].export_config.encryption_key
+            == "arn:aws:kms:eu-west-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+        )
+        assert codebuild.report_groups[report_group_arn].export_config.encrypted
+        assert codebuild.report_groups[report_group_arn].tags[0]["key"] == "Name"
+        assert (
+            codebuild.report_groups[report_group_arn].tags[0]["value"] == project_name
         )

@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.config.config_service import Config
+from prowler.providers.common.provider import Provider
 
-config_client = Config(current_audit_info)
+config_client = Config(Provider.get_global_provider())

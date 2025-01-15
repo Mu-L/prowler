@@ -1,46 +1,31 @@
 import json
-import threading
+import time
 from enum import Enum
 from typing import Optional
 
+from botocore.client import ClientError
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## SSM
-class SSM:
-    def __init__(self, audit_info):
-        self.service = "ssm"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audited_partition = audit_info.audited_partition
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class SSM(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.documents = {}
         self.compliance_resources = {}
         self.managed_instances = {}
-        self.__threading_call__(self.__list_documents__)
-        self.__threading_call__(self.__get_document__)
-        self.__threading_call__(self.__describe_document_permission__)
-        self.__threading_call__(self.__list_resource_compliance_summaries__)
-        self.__threading_call__(self.__describe_instance_information__)
+        self.__threading_call__(self._list_documents)
+        self.__threading_call__(self._get_document)
+        self.__threading_call__(self._describe_document_permission)
+        self.__threading_call__(self._list_resource_compliance_summaries)
+        self.__threading_call__(self._describe_instance_information)
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_documents__(self, regional_client):
+    def _list_documents(self, regional_client):
         logger.info("SSM - Listing Documents...")
         try:
             # To retrieve only the documents owned by the account
@@ -57,12 +42,13 @@ class SSM:
             list_documents_paginator = regional_client.get_paginator("list_documents")
             for page in list_documents_paginator.paginate(**list_documents_parameters):
                 for document in page["DocumentIdentifiers"]:
+                    document_name = document["Name"]
+                    document_arn = f"arn:{self.audited_partition}:ssm:{regional_client.region}:{self.audited_account}:document/{document_name}"
                     if not self.audit_resources or (
-                        is_resource_filtered(document["Name"], self.audit_resources)
+                        is_resource_filtered(document_arn, self.audit_resources)
                     ):
-                        document_name = document["Name"]
-                        document_arn = f"arn:{self.audited_partition}:ssm:{regional_client.region}:{self.audited_account}:document/{document_name}"
-                        self.documents[document_name] = Document(
+                        # We must use the Document ARN as the dict key to have unique keys
+                        self.documents[document_arn] = Document(
                             arn=document_arn,
                             name=document_name,
                             region=regional_client.region,
@@ -76,24 +62,33 @@ class SSM:
                 f" {error}"
             )
 
-    def __get_document__(self, regional_client):
+    def _get_document(self, regional_client):
         logger.info("SSM - Getting Document...")
-        try:
-            for document in self.documents.values():
+        for document in self.documents.values():
+            try:
                 if document.region == regional_client.region:
                     document_info = regional_client.get_document(Name=document.name)
-                    self.documents[document.name].content = json.loads(
+                    self.documents[document.arn].content = json.loads(
                         document_info["Content"]
                     )
 
-        except Exception as error:
-            logger.error(
-                f"{regional_client.region} --"
-                f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
-                f" {error}"
-            )
+            except ClientError as error:
+                if error.response["Error"]["Code"] == "ValidationException":
+                    logger.warning(
+                        f"{regional_client.region} --"
+                        f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
+                        f" {error}"
+                    )
+                    continue
 
-    def __describe_document_permission__(self, regional_client):
+            except Exception as error:
+                logger.error(
+                    f"{regional_client.region} --"
+                    f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
+                    f" {error}"
+                )
+
+    def _describe_document_permission(self, regional_client):
         logger.info("SSM - Describing Document Permission...")
         try:
             for document in self.documents.values():
@@ -101,7 +96,7 @@ class SSM:
                     document_permissions = regional_client.describe_document_permission(
                         Name=document.name, PermissionType="Share"
                     )
-                    self.documents[document.name].account_owners = document_permissions[
+                    self.documents[document.arn].account_owners = document_permissions[
                         "AccountIds"
                     ]
 
@@ -112,7 +107,7 @@ class SSM:
                 f" {error}"
             )
 
-    def __list_resource_compliance_summaries__(self, regional_client):
+    def _list_resource_compliance_summaries(self, regional_client):
         logger.info("SSM - List Resources Compliance Summaries...")
         try:
             list_resource_compliance_summaries_paginator = (
@@ -121,13 +116,18 @@ class SSM:
             for page in list_resource_compliance_summaries_paginator.paginate():
                 for item in page["ResourceComplianceSummaryItems"]:
                     resource_id = item["ResourceId"]
-                    resource_status = item["Status"]
+                    resource_arn = f"arn:{self.audited_partition}:ec2:{regional_client.region}:{self.audited_account}:instance/{resource_id}"
+                    if not self.audit_resources or (
+                        is_resource_filtered(resource_arn, self.audit_resources)
+                    ):
+                        resource_status = item["Status"]
 
-                    self.compliance_resources[resource_id] = ComplianceResource(
-                        id=resource_id,
-                        status=resource_status,
-                        region=regional_client.region,
-                    )
+                        self.compliance_resources[resource_id] = ComplianceResource(
+                            id=resource_id,
+                            arn=resource_arn,
+                            status=resource_status,
+                            region=regional_client.region,
+                        )
 
         except Exception as error:
             logger.error(
@@ -136,7 +136,7 @@ class SSM:
                 f" {error}"
             )
 
-    def __describe_instance_information__(self, regional_client):
+    def _describe_instance_information(self, regional_client):
         logger.info("SSM - Describing Instance Information...")
         try:
             describe_instance_information_paginator = regional_client.get_paginator(
@@ -151,6 +151,10 @@ class SSM:
                         id=resource_id,
                         region=regional_client.region,
                     )
+                # boto3 does not properly handle throttling exceptions for
+                # ssm:DescribeInstanceInformation when there are large numbers of instances
+                # AWS support recommends manually reducing frequency of requests
+                time.sleep(0.1)
 
         except Exception as error:
             logger.error(
@@ -167,6 +171,7 @@ class ResourceStatus(Enum):
 
 class ComplianceResource(BaseModel):
     id: str
+    arn: str
     region: str
     status: ResourceStatus
 

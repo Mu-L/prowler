@@ -45,7 +45,9 @@
         "elb_ssl_listeners",
         "emr_cluster_master_nodes_no_public_ip",
         "opensearch_service_domains_encryption_at_rest_enabled",
-        "iam_policy_no_administrative_privileges",
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
         "iam_no_root_access_key",
         "awslambda_function_not_publicly_accessible",
         "awslambda_function_url_public",
@@ -83,7 +85,7 @@
         }
       ],
       "Checks": [
-        "apigateway_logging_enabled",
+        "apigateway_restapi_logging_enabled",
         "cloudtrail_multi_region_enabled",
         "cloudtrail_s3_dataevents_read_enabled",
         "cloudtrail_s3_dataevents_write_enabled",
@@ -114,7 +116,9 @@
       "Checks": [
         "ec2_ebs_public_snapshot",
         "ec2_instance_public_ip",
-        "iam_policy_no_administrative_privileges",
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
         "iam_no_root_access_key",
         "awslambda_function_not_publicly_accessible",
         "awslambda_function_url_public",
@@ -139,7 +143,7 @@
         }
       ],
       "Checks": [
-        "apigateway_logging_enabled",
+        "apigateway_restapi_logging_enabled",
         "cloudtrail_multi_region_enabled",
         "cloudtrail_s3_dataevents_read_enabled",
         "cloudtrail_s3_dataevents_write_enabled",
@@ -169,9 +173,12 @@
         }
       ],
       "Checks": [
-        "iam_policy_no_administrative_privileges",
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
         "iam_no_root_access_key",
-        "iam_disable_90_days_credentials"
+        "iam_user_accesskey_unused",
+        "iam_user_console_access_unused"
       ]
     },
     {
@@ -201,7 +208,9 @@
         }
       ],
       "Checks": [
-        "iam_policy_no_administrative_privileges"
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges"
       ]
     },
     {
@@ -255,7 +264,9 @@
         }
       ],
       "Checks": [
-        "iam_policy_no_administrative_privileges"
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges"
       ]
     },
     {
@@ -271,10 +282,13 @@
       ],
       "Checks": [
         "iam_password_policy_reuse_24",
-        "iam_policy_no_administrative_privileges",
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
         "iam_no_root_access_key",
         "iam_rotate_access_key_90_days",
-        "iam_disable_90_days_credentials",
+        "iam_user_accesskey_unused",
+        "iam_user_console_access_unused",
         "secretsmanager_automatic_rotation_enabled"
       ]
     },
@@ -331,7 +345,8 @@
         "iam_password_policy_uppercase",
         "iam_password_policy_reuse_24",
         "iam_rotate_access_key_90_days",
-        "iam_disable_90_days_credentials"
+        "iam_user_accesskey_unused",
+        "iam_user_console_access_unused"
       ]
     },
     {
@@ -368,7 +383,7 @@
         }
       ],
       "Checks": [
-        "apigateway_logging_enabled",
+        "apigateway_restapi_logging_enabled",
         "cloudtrail_multi_region_enabled",
         "cloudtrail_s3_dataevents_read_enabled",
         "cloudtrail_s3_dataevents_write_enabled",
@@ -512,7 +527,9 @@
         "ec2_ebs_public_snapshot",
         "ec2_instance_public_ip",
         "emr_cluster_master_nodes_no_public_ip",
-        "iam_policy_no_administrative_privileges",
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
         "iam_user_mfa_enabled_console_access",
         "awslambda_function_not_publicly_accessible",
         "awslambda_function_url_public",
@@ -611,7 +628,7 @@
         }
       ],
       "Checks": [
-        "apigateway_logging_enabled",
+        "apigateway_restapi_logging_enabled",
         "cloudtrail_multi_region_enabled",
         "cloudtrail_s3_dataevents_read_enabled",
         "cloudtrail_s3_dataevents_write_enabled",

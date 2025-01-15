@@ -1,37 +1,22 @@
-import threading
 from typing import Optional
 
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################################ WorkSpaces
-class WorkSpaces:
-    def __init__(self, audit_info):
-        self.service = "workspaces"
-        self.session = audit_info.audit_session
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class WorkSpaces(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.workspaces = []
-        self.__threading_call__(self.__describe_workspaces__)
-        self.__describe_tags__()
+        self.__threading_call__(self._describe_workspaces)
+        self._describe_tags()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __describe_workspaces__(self, regional_client):
+    def _describe_workspaces(self, regional_client):
         logger.info("WorkSpaces - describing workspaces...")
         try:
             describe_workspaces_paginator = regional_client.get_paginator(
@@ -39,17 +24,19 @@ class WorkSpaces:
             )
             for page in describe_workspaces_paginator.paginate():
                 for workspace in page["Workspaces"]:
+                    arn = f"arn:{self.audited_partition}:workspaces:{regional_client.region}:{self.audited_account}:workspace/{workspace['WorkspaceId']}"
                     if not self.audit_resources or (
-                        is_resource_filtered(
-                            workspace["WorkspaceId"], self.audit_resources
-                        )
+                        is_resource_filtered(arn, self.audit_resources)
                     ):
                         workspace_to_append = WorkSpace(
-                            id=workspace["WorkspaceId"], region=regional_client.region
+                            arn=arn,
+                            id=workspace.get("WorkspaceId"),
+                            region=regional_client.region,
+                            subnet_id=workspace.get("SubnetId"),
                         )
                         if (
                             "UserVolumeEncryptionEnabled" in workspace
-                            and workspace["UserVolumeEncryptionEnabled"]
+                            and workspace.get("UserVolumeEncryptionEnabled")
                         ):
                             workspace_to_append.user_volume_encryption_enabled = True
                         if (
@@ -64,7 +51,7 @@ class WorkSpaces:
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __describe_tags__(self):
+    def _describe_tags(self):
         logger.info("Workspaces - List Tags...")
         try:
             for workspace in self.workspaces:
@@ -81,8 +68,9 @@ class WorkSpaces:
 
 class WorkSpace(BaseModel):
     id: str
-    arn: str = ""
+    arn: str
     region: str
     user_volume_encryption_enabled: bool = None
     root_volume_encryption_enabled: bool = None
+    subnet_id: str = None
     tags: Optional[list] = []

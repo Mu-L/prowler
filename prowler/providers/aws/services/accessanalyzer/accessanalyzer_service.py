@@ -1,39 +1,24 @@
-import threading
 from typing import Optional
 
+from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## AccessAnalyzer
-class AccessAnalyzer:
-    def __init__(self, audit_info):
-        self.service = "accessanalyzer"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class AccessAnalyzer(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.analyzers = []
-        self.__threading_call__(self.__list_analyzers__)
-        self.__list_findings__()
-        self.__get_finding_status__()
+        self.__threading_call__(self._list_analyzers)
+        self._list_findings()
+        self._get_finding_status()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_analyzers__(self, regional_client):
+    def _list_analyzers(self, regional_client):
         logger.info("AccessAnalyzer - Listing Analyzers...")
         try:
             list_analyzers_paginator = regional_client.get_paginator("list_analyzers")
@@ -58,8 +43,10 @@ class AccessAnalyzer:
             if analyzer_count == 0:
                 self.analyzers.append(
                     Analyzer(
-                        arn="",
-                        name=self.audited_account,
+                        arn=self.get_unknown_arn(
+                            region=regional_client.region, resource_type="analyzer"
+                        ),
+                        name="analyzer/unknown",
                         status="NOT_AVAILABLE",
                         tags=[],
                         type="",
@@ -72,38 +59,64 @@ class AccessAnalyzer:
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __get_finding_status__(self):
+    def _get_finding_status(self):
         logger.info("AccessAnalyzer - Get Finding status...")
         try:
             for analyzer in self.analyzers:
                 if analyzer.status == "ACTIVE":
                     regional_client = self.regional_clients[analyzer.region]
                     for finding in analyzer.findings:
-                        finding_information = regional_client.get_finding(
-                            analyzerArn=analyzer.arn, id=finding.id
-                        )
-                        finding.status = finding_information["finding"]["status"]
+                        try:
+                            finding_information = regional_client.get_finding(
+                                analyzerArn=analyzer.arn, id=finding.id
+                            )
+                            finding.status = finding_information["finding"]["status"]
+                        except ClientError as error:
+                            if (
+                                error.response["Error"]["Code"]
+                                == "ResourceNotFoundException"
+                            ):
+                                logger.warning(
+                                    f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                                )
+                                finding.status = ""
+                            continue
 
         except Exception as error:
             logger.error(
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __list_findings__(self):
+    # TODO: We need to include ListFindingsV2
+    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/accessanalyzer/client/list_findings_v2.html
+    def _list_findings(self):
         logger.info("AccessAnalyzer - Listing Findings per Analyzer...")
         try:
             for analyzer in self.analyzers:
-                if analyzer.status == "ACTIVE":
-                    regional_client = self.regional_clients[analyzer.region]
-                    list_findings_paginator = regional_client.get_paginator(
-                        "list_findings"
+                try:
+                    if analyzer.status == "ACTIVE":
+                        regional_client = self.regional_clients[analyzer.region]
+                        list_findings_paginator = regional_client.get_paginator(
+                            "list_findings"
+                        )
+                        for page in list_findings_paginator.paginate(
+                            analyzerArn=analyzer.arn
+                        ):
+                            for finding in page["findings"]:
+                                analyzer.findings.append(Finding(id=finding["id"]))
+                except ClientError as error:
+                    if error.response["Error"]["Code"] == "ValidationException":
+                        logger.warning(
+                            f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                        )
+                    else:
+                        logger.error(
+                            f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                        )
+                except Exception as error:
+                    logger.error(
+                        f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
                     )
-                    for page in list_findings_paginator.paginate(
-                        analyzerArn=analyzer.arn
-                    ):
-                        for finding in page["findings"]:
-                            analyzer.findings.append(Finding(id=finding["id"]))
-
         except Exception as error:
             logger.error(
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"

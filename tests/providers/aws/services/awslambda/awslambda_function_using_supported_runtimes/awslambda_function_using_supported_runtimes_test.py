@@ -1,27 +1,11 @@
 from unittest import mock
 
-from moto.core import DEFAULT_ACCOUNT_ID
-
 from prowler.providers.aws.services.awslambda.awslambda_service import Function
-
-AWS_REGION = "us-east-1"
-
-
-def mock_get_config_var(config_var: str):
-    return [
-        "python3.6",
-        "python2.7",
-        "nodejs4.3",
-        "nodejs4.3-edge",
-        "nodejs6.10",
-        "nodejs",
-        "nodejs8.10",
-        "nodejs10.x",
-        "dotnetcore1.0",
-        "dotnetcore2.0",
-        "dotnetcore2.1",
-        "ruby2.5",
-    ]
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 
 class Test_awslambda_function_using_supported_runtimes:
@@ -30,7 +14,10 @@ class Test_awslambda_function_using_supported_runtimes:
         lambda_client.functions = {}
 
         with mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_service.Lambda",
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(),
+        ), mock.patch(
+            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.awslambda_client",
             new=lambda_client,
         ):
             # Test Check
@@ -47,24 +34,50 @@ class Test_awslambda_function_using_supported_runtimes:
         lambda_client = mock.MagicMock
         function_name = "test-lambda"
         function_runtime = "nodejs4.3"
-        function_arn = (
-            f"arn:aws:lambda:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:function/{function_name}"
-        )
+        function_arn = f"arn:aws:lambda:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:function/{function_name}"
         lambda_client.functions = {
             "function_name": Function(
                 name=function_name,
+                security_groups=[],
                 arn=function_arn,
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
                 runtime=function_runtime,
             )
         }
 
+        # Mock config
+        lambda_client.audit_config = {
+            "obsolete_lambda_runtimes": [
+                "java8",
+                "go1.x",
+                "provided",
+                "python3.6",
+                "python2.7",
+                "python3.7",
+                "nodejs4.3",
+                "nodejs4.3-edge",
+                "nodejs6.10",
+                "nodejs",
+                "nodejs8.10",
+                "nodejs10.x",
+                "nodejs12.x",
+                "nodejs14.x",
+                "dotnet5.0",
+                "dotnetcore1.0",
+                "dotnetcore2.0",
+                "dotnetcore2.1",
+                "dotnetcore3.1",
+                "ruby2.5",
+                "ruby2.7",
+            ]
+        }
+
         with mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_service.Lambda",
-            new=lambda_client,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(),
         ), mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.get_config_var",
-            new=mock_get_config_var,
+            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.awslambda_client",
+            new=lambda_client,
         ):
             # Test Check
             from prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes import (
@@ -75,37 +88,64 @@ class Test_awslambda_function_using_supported_runtimes:
             result = check.execute()
 
             assert len(result) == 1
-            assert result[0].region == AWS_REGION
+            assert result[0].region == AWS_REGION_US_EAST_1
             assert result[0].resource_id == function_name
             assert result[0].resource_arn == function_arn
             assert result[0].status == "FAIL"
             assert (
                 result[0].status_extended
-                == f"Lambda function {function_name} is using {function_runtime} which is obsolete"
+                == f"Lambda function {function_name} is using {function_runtime} which is obsolete."
             )
+            assert result[0].resource_tags == []
 
     def test_function_supported_runtime(self):
         lambda_client = mock.MagicMock
         function_name = "test-lambda"
         function_runtime = "python3.9"
-        function_arn = (
-            f"arn:aws:lambda:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:function/{function_name}"
-        )
+        function_arn = f"arn:aws:lambda:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:function/{function_name}"
         lambda_client.functions = {
             "function_name": Function(
                 name=function_name,
+                security_groups=[],
                 arn=function_arn,
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
                 runtime=function_runtime,
             )
         }
 
+        # Mock config
+        lambda_client.audit_config = {
+            "obsolete_lambda_runtimes": [
+                "java8",
+                "go1.x",
+                "provided",
+                "python3.6",
+                "python2.7",
+                "python3.7",
+                "nodejs4.3",
+                "nodejs4.3-edge",
+                "nodejs6.10",
+                "nodejs",
+                "nodejs8.10",
+                "nodejs10.x",
+                "nodejs12.x",
+                "nodejs14.x",
+                "dotnet5.0",
+                "dotnetcore1.0",
+                "dotnetcore2.0",
+                "dotnetcore2.1",
+                "dotnetcore3.1",
+                "ruby2.5",
+                "ruby2.7",
+            ]
+        }
+
         with mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_service.Lambda",
-            new=lambda_client,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(),
         ), mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.get_config_var",
-            new=mock_get_config_var,
+            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.awslambda_client",
+            new=lambda_client,
         ):
             # Test Check
             from prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes import (
@@ -116,33 +156,62 @@ class Test_awslambda_function_using_supported_runtimes:
             result = check.execute()
 
             assert len(result) == 1
-            assert result[0].region == AWS_REGION
+            assert result[0].region == AWS_REGION_US_EAST_1
             assert result[0].resource_id == function_name
             assert result[0].resource_arn == function_arn
             assert result[0].status == "PASS"
             assert (
                 result[0].status_extended
-                == f"Lambda function {function_name} is using {function_runtime} which is supported"
+                == f"Lambda function {function_name} is using {function_runtime} which is supported."
             )
+            assert result[0].resource_tags == []
 
     def test_function_no_runtime(self):
         lambda_client = mock.MagicMock
         function_name = "test-lambda"
-        function_arn = (
-            f"arn:aws:lambda:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:function/{function_name}"
-        )
+        function_arn = f"arn:aws:lambda:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:function/{function_name}"
         lambda_client.functions = {
             "function_name": Function(
-                name=function_name, arn=function_arn, region=AWS_REGION
+                name=function_name,
+                security_groups=[],
+                arn=function_arn,
+                region=AWS_REGION_US_EAST_1,
             )
         }
 
+        # Mock config
+        lambda_client.audit_config = {
+            "obsolete_lambda_runtimes": [
+                "java8",
+                "go1.x",
+                "provided",
+                "python3.6",
+                "python2.7",
+                "python3.7",
+                "nodejs4.3",
+                "nodejs4.3-edge",
+                "nodejs6.10",
+                "nodejs",
+                "nodejs8.10",
+                "nodejs10.x",
+                "nodejs12.x",
+                "nodejs14.x",
+                "dotnet5.0",
+                "dotnetcore1.0",
+                "dotnetcore2.0",
+                "dotnetcore2.1",
+                "dotnetcore3.1",
+                "ruby2.5",
+                "ruby2.7",
+            ]
+        }
+
         with mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_service.Lambda",
-            new=lambda_client,
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(),
         ), mock.patch(
-            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.get_config_var",
-            new=mock_get_config_var,
+            "prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes.awslambda_client",
+            new=lambda_client,
         ):
             # Test Check
             from prowler.providers.aws.services.awslambda.awslambda_function_using_supported_runtimes.awslambda_function_using_supported_runtimes import (

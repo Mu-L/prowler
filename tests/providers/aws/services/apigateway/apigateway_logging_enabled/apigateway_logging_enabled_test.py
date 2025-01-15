@@ -1,39 +1,47 @@
 from unittest import mock
 
 from boto3 import client
-from moto import mock_apigateway
+from moto import mock_aws
 
-AWS_REGION = "us-east-1"
+from tests.providers.aws.utils import (
+    AWS_REGION_EU_WEST_1,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 
-class Test_apigateway_logging_enabled:
-    @mock_apigateway
+class Test_apigateway_restapi_logging_enabled:
+    @mock_aws
     def test_apigateway_no_rest_apis(self):
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.apigateway.apigateway_service import (
             APIGateway,
         )
 
-        current_audit_info.audited_partition = "aws"
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.services.apigateway.apigateway_logging_enabled.apigateway_logging_enabled.apigateway_client",
-            new=APIGateway(current_audit_info),
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
+            "prowler.providers.aws.services.apigateway.apigateway_restapi_logging_enabled.apigateway_restapi_logging_enabled.apigateway_client",
+            new=APIGateway(aws_provider),
         ):
             # Test Check
-            from prowler.providers.aws.services.apigateway.apigateway_logging_enabled.apigateway_logging_enabled import (
-                apigateway_logging_enabled,
+            from prowler.providers.aws.services.apigateway.apigateway_restapi_logging_enabled.apigateway_restapi_logging_enabled import (
+                apigateway_restapi_logging_enabled,
             )
 
-            check = apigateway_logging_enabled()
+            check = apigateway_restapi_logging_enabled()
             result = check.execute()
 
             assert len(result) == 0
 
-    @mock_apigateway
+    @mock_aws
     def test_apigateway_one_rest_api_with_logging(self):
         # Create APIGateway Mocked Resources
-        apigateway_client = client("apigateway", region_name=AWS_REGION)
+        apigateway_client = client("apigateway", region_name=AWS_REGION_US_EAST_1)
         rest_api = apigateway_client.create_rest_api(
             name="test-rest-api",
         )
@@ -75,23 +83,27 @@ class Test_apigateway_logging_enabled:
                 },
             ],
         )
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.apigateway.apigateway_service import (
             APIGateway,
         )
 
-        current_audit_info.audited_partition = "aws"
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.services.apigateway.apigateway_logging_enabled.apigateway_logging_enabled.apigateway_client",
-            new=APIGateway(current_audit_info),
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
+            "prowler.providers.aws.services.apigateway.apigateway_restapi_logging_enabled.apigateway_restapi_logging_enabled.apigateway_client",
+            new=APIGateway(aws_provider),
         ):
             # Test Check
-            from prowler.providers.aws.services.apigateway.apigateway_logging_enabled.apigateway_logging_enabled import (
-                apigateway_logging_enabled,
+            from prowler.providers.aws.services.apigateway.apigateway_restapi_logging_enabled.apigateway_restapi_logging_enabled import (
+                apigateway_restapi_logging_enabled,
             )
 
-            check = apigateway_logging_enabled()
+            check = apigateway_restapi_logging_enabled()
             result = check.execute()
 
             assert result[0].status == "PASS"
@@ -103,13 +115,15 @@ class Test_apigateway_logging_enabled:
             assert result[0].resource_id == "test-rest-api"
             assert (
                 result[0].resource_arn
-                == f"arn:{current_audit_info.audited_partition}:apigateway:{AWS_REGION}::/apis/{rest_api['id']}/stages/test"
+                == f"arn:{aws_provider.identity.partition}:apigateway:{AWS_REGION_US_EAST_1}::/restapis/{rest_api['id']}/stages/test"
             )
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_tags == [None]
 
-    @mock_apigateway
+    @mock_aws
     def test_apigateway_one_rest_api_without_logging(self):
         # Create APIGateway Mocked Resources
-        apigateway_client = client("apigateway", region_name=AWS_REGION)
+        apigateway_client = client("apigateway", region_name=AWS_REGION_US_EAST_1)
         # Create APIGateway Rest API
         rest_api = apigateway_client.create_rest_api(
             name="test-rest-api",
@@ -142,23 +156,27 @@ class Test_apigateway_logging_enabled:
             stageName="test",
         )
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.apigateway.apigateway_service import (
             APIGateway,
         )
 
-        current_audit_info.audited_partition = "aws"
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
 
         with mock.patch(
-            "prowler.providers.aws.services.apigateway.apigateway_logging_enabled.apigateway_logging_enabled.apigateway_client",
-            new=APIGateway(current_audit_info),
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
+            "prowler.providers.aws.services.apigateway.apigateway_restapi_logging_enabled.apigateway_restapi_logging_enabled.apigateway_client",
+            new=APIGateway(aws_provider),
         ):
             # Test Check
-            from prowler.providers.aws.services.apigateway.apigateway_logging_enabled.apigateway_logging_enabled import (
-                apigateway_logging_enabled,
+            from prowler.providers.aws.services.apigateway.apigateway_restapi_logging_enabled.apigateway_restapi_logging_enabled import (
+                apigateway_restapi_logging_enabled,
             )
 
-            check = apigateway_logging_enabled()
+            check = apigateway_restapi_logging_enabled()
             result = check.execute()
 
             assert result[0].status == "FAIL"
@@ -170,5 +188,7 @@ class Test_apigateway_logging_enabled:
             assert result[0].resource_id == "test-rest-api"
             assert (
                 result[0].resource_arn
-                == f"arn:{current_audit_info.audited_partition}:apigateway:{AWS_REGION}::/apis/{rest_api['id']}/stages/test"
+                == f"arn:{aws_provider.identity.partition}:apigateway:{AWS_REGION_US_EAST_1}::/restapis/{rest_api['id']}/stages/test"
             )
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_tags == [None]

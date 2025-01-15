@@ -1,4 +1,4 @@
-from prowler.providers.azure.lib.audit_info.audit_info import azure_audit_info
 from prowler.providers.azure.services.iam.iam_service import IAM
+from prowler.providers.common.provider import Provider
 
-iam_client = IAM(azure_audit_info)
+iam_client = IAM(Provider.get_global_provider())

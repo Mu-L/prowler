@@ -1,15 +1,14 @@
 from unittest import mock
 
-from moto.core import DEFAULT_ACCOUNT_ID
-
 from prowler.providers.aws.services.cloudfront.cloudfront_service import (
     Distribution,
     GeoRestrictionType,
 )
+from tests.providers.aws.utils import AWS_ACCOUNT_NUMBER
 
 DISTRIBUTION_ID = "E27LVI50CSW06W"
 DISTRIBUTION_ARN = (
-    f"arn:aws:cloudfront::{DEFAULT_ACCOUNT_ID}:distribution/{DISTRIBUTION_ID}"
+    f"arn:aws:cloudfront::{AWS_ACCOUNT_NUMBER}:distribution/{DISTRIBUTION_ID}"
 )
 REGION = "eu-west-1"
 
@@ -35,7 +34,7 @@ class Test_cloudfront_distributions_geo_restrictions_enabled:
     def test_one_distribution_geo_restriction_disabled(self):
         cloudfront_client = mock.MagicMock
         cloudfront_client.distributions = {
-            "DISTRIBUTION_ID": Distribution(
+            DISTRIBUTION_ID: Distribution(
                 arn=DISTRIBUTION_ARN,
                 id=DISTRIBUTION_ID,
                 region=REGION,
@@ -63,18 +62,20 @@ class Test_cloudfront_distributions_geo_restrictions_enabled:
             assert result[0].status == "FAIL"
             assert (
                 result[0].status_extended
-                == f"CloudFront Distribution {DISTRIBUTION_ID} has Geo restrictions disabled"
+                == f"CloudFront Distribution {DISTRIBUTION_ID} has Geo restrictions disabled."
             )
+            assert result[0].resource_tags == []
 
     def test_one_distribution_geo_restriction_enabled_whitelist(self):
         cloudfront_client = mock.MagicMock
         cloudfront_client.distributions = {
-            "DISTRIBUTION_ID": Distribution(
+            DISTRIBUTION_ID: Distribution(
                 arn=DISTRIBUTION_ARN,
                 id=DISTRIBUTION_ID,
                 region=REGION,
                 origins=[],
                 geo_restriction_type=GeoRestrictionType.whitelist,
+                origin_failover=False,
             )
         }
 
@@ -97,18 +98,20 @@ class Test_cloudfront_distributions_geo_restrictions_enabled:
             assert result[0].status == "PASS"
             assert (
                 result[0].status_extended
-                == f"CloudFront Distribution {DISTRIBUTION_ID} has Geo restrictions enabled"
+                == f"CloudFront Distribution {DISTRIBUTION_ID} has Geo restrictions enabled."
             )
+            assert result[0].resource_tags == []
 
     def test_one_distribution_geo_restriction_enabled_blacklist(self):
         cloudfront_client = mock.MagicMock
         cloudfront_client.distributions = {
-            "DISTRIBUTION_ID": Distribution(
+            DISTRIBUTION_ID: Distribution(
                 arn=DISTRIBUTION_ARN,
                 id=DISTRIBUTION_ID,
                 region=REGION,
                 origins=[],
                 geo_restriction_type=GeoRestrictionType.blacklist,
+                origin_failover=False,
             )
         }
 
@@ -131,5 +134,6 @@ class Test_cloudfront_distributions_geo_restrictions_enabled:
             assert result[0].status == "PASS"
             assert (
                 result[0].status_extended
-                == f"CloudFront Distribution {DISTRIBUTION_ID} has Geo restrictions enabled"
+                == f"CloudFront Distribution {DISTRIBUTION_ID} has Geo restrictions enabled."
             )
+            assert result[0].resource_tags == []

@@ -1,60 +1,102 @@
 from json import dumps
+from uuid import uuid4
 
-from boto3 import client, session
+import botocore
+from boto3 import client
 from freezegun import freeze_time
-from moto import mock_iam
+from mock import patch
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
-from prowler.providers.aws.services.iam.iam_service import IAM, is_service_role
+from prowler.providers.aws.services.iam.iam_service import IAM, Policy, is_service_role
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
-AWS_ACCOUNT_NUMBER = 123456789012
 TEST_DATETIME = "2023-01-01T12:01:01+00:00"
 
+INLINE_POLICY_NOT_ADMIN = {
+    "Version": "2012-10-17",
+    "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}],
+}
 
+ASSUME_ROLE_POLICY_DOCUMENT = {
+    "Version": "2012-10-17",
+    "Statement": {
+        "Sid": "test",
+        "Effect": "Allow",
+        "Principal": {"AWS": f"arn:aws:iam::{AWS_ACCOUNT_NUMBER}:root"},
+        "Action": "sts:AssumeRole",
+    },
+}
+
+SECURITY_AUDIT_POLICY_ARN = "arn:aws:iam::aws:policy/SecurityAudit"
+READ_ONLY_ACCESS_POLICY_ARN = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+SUPPORT_SERVICE_ROLE_POLICY_ARN = "arn:aws:iam::aws:policy/AWSSupportAccess"
+ADMINISTRATOR_ACCESS_POLICY_ARN = "arn:aws:iam::aws:policy/AdministratorAccess"
+
+# Mocking Access Analyzer Calls
+make_api_call = botocore.client.BaseClient._make_api_call
+
+
+IAM_LAST_ACCESSED_SERVICES = [
+    {
+        "ServiceName": "AWS EC2",
+        "ServiceNamespace": "ec2",
+        "TotalAuthenticatedEntities": 1,
+    },
+    {
+        "ServiceName": "AWS Identity and Access Management",
+        "ServiceNamespace": "iam",
+        "TotalAuthenticatedEntities": 0,
+    },
+]
+
+
+def mock_make_api_call(self, operation_name, kwargs):
+    """
+    As you can see the operation_name has the list_analyzers snake_case form but
+    we are using the ListAnalyzers form.
+    Rationale -> https://github.com/boto/botocore/blob/develop/botocore/client.py#L810:L816
+    We have to mock every AWS API call using Boto3
+    """
+    if operation_name == "GenerateServiceLastAccessedDetails":
+        return {"JobId": str(uuid4())}
+    if operation_name == "GetServiceLastAccessedDetails":
+        return {
+            "JobStatus": "COMPLETED",
+            "JobType": "SERVICE_LEVEL",
+            "JobCreationDate": "2023-10-19T06:11:11.449000+00:00",
+            "ServicesLastAccessed": IAM_LAST_ACCESSED_SERVICES,
+        }
+
+    return make_api_call(self, operation_name, kwargs)
+
+
+# Patch every AWS call using Boto3
+@patch("botocore.client.BaseClient._make_api_call", new=mock_make_api_call)
 class Test_IAM_Service:
-    # Mocked Audit Info
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=None,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region="us-east-1",
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test IAM Client
-    @mock_iam
-    def test__get_client__(self):
+    @mock_aws
+    def test_get_client(self):
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
         assert iam.client.__class__.__name__ == "IAM"
 
     # Test IAM Session
-    @mock_iam
+    @mock_aws
     def test__get_session__(self):
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
         assert iam.session.__class__.__name__ == "Session"
 
     # Test IAM Get Credential Report
     @freeze_time(TEST_DATETIME)
-    @mock_iam
-    def test__get_credential_report__(self):
+    @mock_aws
+    def test_get_credential_report(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Create IAM User
@@ -89,8 +131,8 @@ class Test_IAM_Service:
         }
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
         assert len(iam.credential_report) == 1
         assert iam.credential_report[0].get("user")
         assert iam.credential_report[0]["user"] == expected_credential_report["user"]
@@ -219,8 +261,8 @@ class Test_IAM_Service:
         )
 
     # Test IAM Get Roles
-    @mock_iam
-    def test__get_roles__(self):
+    @mock_aws
+    def test_get_roles(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Create 2 IAM Roles
@@ -260,8 +302,8 @@ class Test_IAM_Service:
         )["Role"]
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
         assert len(iam.roles) == len(iam_client.list_roles()["Roles"])
         assert iam.roles[0].tags == [
@@ -274,8 +316,8 @@ class Test_IAM_Service:
         assert not is_service_role(role)
 
     # Test IAM Get Groups
-    @mock_iam
-    def test__get_groups__(self):
+    @mock_aws
+    def test_get_groups(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Create 2 IAM Groups
@@ -287,13 +329,13 @@ class Test_IAM_Service:
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
         assert len(iam.groups) == len(iam_client.list_groups()["Groups"])
 
     # Test IAM Get Users
-    @mock_iam
-    def test__get_users__(self):
+    @mock_aws
+    def test_get_users(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Create 2 IAM Users
@@ -311,8 +353,8 @@ class Test_IAM_Service:
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
         assert len(iam.users) == len(iam_client.list_users()["Users"])
         assert iam.users[0].tags == [
             {"Key": "test", "Value": "test"},
@@ -322,21 +364,21 @@ class Test_IAM_Service:
         ]
 
     # Test IAM Get Account Summary
-    @mock_iam
-    def test__get_account_summary__(self):
+    @mock_aws
+    def test_get_account_summary(self):
         # Generate IAM Client
         iam_client = client("iam")
-        account_summary = iam_client.get_account_summary()
+        account_summary = iam_client.get_account_summary()["SummaryMap"]
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
-        assert iam.account_summary == account_summary
+        assert iam.account_summary["SummaryMap"] == account_summary
 
     # Test IAM Get Password Policy
-    @mock_iam
-    def test__get_password_policy__(self):
+    @mock_aws
+    def test_get_password_policy(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Update Password Policy
@@ -363,8 +405,8 @@ class Test_IAM_Service:
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
         assert iam.password_policy.length == min_password_length
         assert iam.password_policy.symbols == require_symbols
@@ -378,8 +420,8 @@ class Test_IAM_Service:
         assert iam.password_policy.hard_expiry == hard_expiry
 
     # Test IAM List MFA Device
-    @mock_iam
-    def test__list_mfa_devices__(self):
+    @mock_aws
+    def test__list_mfa_devices_arn__(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Generate IAM user
@@ -399,8 +441,8 @@ class Test_IAM_Service:
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
         assert len(iam.users) == 1
         assert len(iam.users[0].mfa_devices) == 1
@@ -410,9 +452,36 @@ class Test_IAM_Service:
         )
         assert iam.users[0].mfa_devices[0].type == "mfa"
 
+    # Test IAM List MFA Device
+    @mock_aws
+    def test__list_mfa_devices_number__(self):
+        # Generate IAM Client
+        iam_client = client("iam")
+        # Generate IAM user
+        iam_client.create_user(
+            UserName="user1",
+        )
+        # Create Unknown MFA device
+        hardware_mfa_devide = "XXXXXXXXX"
+        iam_client.enable_mfa_device(
+            UserName="user1",
+            SerialNumber=hardware_mfa_devide,
+            AuthenticationCode1="123456",
+            AuthenticationCode2="123456",
+        )
+
+        # IAM client for this test class
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+
+        assert len(iam.users) == 1
+        assert len(iam.users[0].mfa_devices) == 1
+        assert iam.users[0].mfa_devices[0].serial_number == hardware_mfa_devide
+        assert iam.users[0].mfa_devices[0].type == "hardware"
+
     # Test IAM List Virtual MFA Device
-    @mock_iam
-    def test__list_virtual_mfa_devices__(self):
+    @mock_aws
+    def test_list_virtual_mfa_devices(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Generate IAM user
@@ -433,8 +502,8 @@ class Test_IAM_Service:
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
         assert len(iam.virtual_mfa_devices) == 1
         assert (
@@ -444,8 +513,8 @@ class Test_IAM_Service:
         assert iam.virtual_mfa_devices[0]["User"]["UserName"] == username
 
     # Test IAM Get Group Users
-    @mock_iam
-    def test__get_group_users__(self):
+    @mock_aws
+    def test_get_group_users(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Generate IAM user
@@ -460,8 +529,8 @@ class Test_IAM_Service:
         iam_client.add_user_to_group(GroupName=group, UserName=username)
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
         assert len(iam.groups) == 1
         assert iam.groups[0].name == group
@@ -470,8 +539,8 @@ class Test_IAM_Service:
         assert iam.groups[0].users[0].name == username
 
     # Test IAM List Attached Group Policies
-    @mock_iam
-    def test__list_attached_group_policies__(self):
+    @mock_aws
+    def test_list_attached_group_policies(self):
         # Generate IAM Client
         iam_client = client("iam")
         # Generate IAM user
@@ -507,8 +576,8 @@ class Test_IAM_Service:
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
         assert len(iam.groups) == 1
         assert iam.groups[0].name == group
@@ -518,19 +587,56 @@ class Test_IAM_Service:
             iam.groups[0].attached_policies[0]["PolicyArn"] == policy["Policy"]["Arn"]
         )
 
-    @mock_iam
+    # Test IAM List Attached Role Policies
+    @mock_aws(config={"iam": {"load_aws_managed_policies": True}})
+    def test_list_attached_role_policies(self):
+        iam = client("iam")
+        role_name = "test"
+        assume_role_policy_document = {
+            "Version": "2012-10-17",
+            "Statement": {
+                "Sid": "test",
+                "Effect": "Allow",
+                "Principal": {"AWS": "*"},
+                "Action": "sts:AssumeRole",
+            },
+        }
+        response = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=dumps(assume_role_policy_document),
+        )
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=READ_ONLY_ACCESS_POLICY_ARN,
+        )
+
+        # IAM client for this test class
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+
+        assert len(iam.roles) == 1
+        assert iam.roles[0].name == role_name
+        assert iam.roles[0].arn == response["Role"]["Arn"]
+        assert len(iam.roles[0].attached_policies) == 1
+        assert iam.roles[0].attached_policies[0]["PolicyName"] == "ReadOnlyAccess"
+        assert (
+            iam.roles[0].attached_policies[0]["PolicyArn"]
+            == READ_ONLY_ACCESS_POLICY_ARN
+        )
+
+    @mock_aws(config={"iam": {"load_aws_managed_policies": True}})
     def test__get_entities_attached_to_support_roles__no_roles(self):
         iam_client = client("iam")
         _ = iam_client.list_entities_for_policy(
-            PolicyArn="arn:aws:iam::aws:policy/aws-service-role/AWSSupportServiceRolePolicy",
+            PolicyArn=SUPPORT_SERVICE_ROLE_POLICY_ARN,
             EntityFilter="Role",
         )["PolicyRoles"]
 
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
-        assert len(iam.entities_attached_to_support_roles) == 0
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+        assert len(iam.entities_role_attached_to_support_policy) == 0
 
-    @mock_iam
+    @mock_aws(config={"iam": {"load_aws_managed_policies": True}})
     def test__get_entities_attached_to_support_roles__(self):
         iam_client = client("iam")
         role_name = "test_support"
@@ -549,21 +655,68 @@ class Test_IAM_Service:
         )
         iam_client.attach_role_policy(
             RoleName=role_name,
-            PolicyArn="arn:aws:iam::aws:policy/aws-service-role/AWSSupportServiceRolePolicy",
+            PolicyArn=SUPPORT_SERVICE_ROLE_POLICY_ARN,
         )
 
         iam_client.list_entities_for_policy(
-            PolicyArn="arn:aws:iam::aws:policy/aws-service-role/AWSSupportServiceRolePolicy",
+            PolicyArn=SUPPORT_SERVICE_ROLE_POLICY_ARN,
             EntityFilter="Role",
         )["PolicyRoles"]
 
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
-        assert len(iam.entities_attached_to_support_roles) == 1
-        assert iam.entities_attached_to_support_roles[0]["RoleName"] == role_name
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+        assert len(iam.entities_role_attached_to_support_policy) == 1
+        assert iam.entities_role_attached_to_support_policy[0]["RoleName"] == role_name
 
-    @mock_iam
-    def test___list_policies__(self):
+    @mock_aws
+    def test__get_entities_attached_to_securityaudit_roles__no_roles(self):
+        iam_client = client("iam")
+        _ = iam_client.list_entities_for_policy(
+            PolicyArn=SECURITY_AUDIT_POLICY_ARN,
+            EntityFilter="Role",
+        )["PolicyRoles"]
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+        assert len(iam.entities_role_attached_to_securityaudit_policy) == 0
+
+    @mock_aws(config={"iam": {"load_aws_managed_policies": True}})
+    def test__get_entities_attached_to_securityaudit_roles__(self):
+        iam_client = client("iam")
+        role_name = "test_securityaudit"
+        assume_role_policy_document = {
+            "Version": "2012-10-17",
+            "Statement": {
+                "Sid": "test",
+                "Effect": "Allow",
+                "Principal": {"AWS": "*"},
+                "Action": "sts:AssumeRole",
+            },
+        }
+        iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=dumps(assume_role_policy_document),
+        )
+        iam_client.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=SECURITY_AUDIT_POLICY_ARN,
+        )
+
+        iam_client.list_entities_for_policy(
+            PolicyArn=SECURITY_AUDIT_POLICY_ARN,
+            EntityFilter="Role",
+        )["PolicyRoles"]
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+        assert len(iam.entities_role_attached_to_securityaudit_policy) == 1
+        assert (
+            iam.entities_role_attached_to_securityaudit_policy[0]["RoleName"]
+            == role_name
+        )
+
+    @mock_aws
+    def test__list_policies(self):
         iam_client = client("iam")
         policy_name = "policy1"
         policy_document = {
@@ -573,15 +726,26 @@ class Test_IAM_Service:
             ],
         }
         iam_client.create_policy(
-            PolicyName=policy_name, PolicyDocument=dumps(policy_document)
+            PolicyName=policy_name,
+            PolicyDocument=dumps(policy_document),
+            Tags=[
+                {"Key": "string", "Value": "string"},
+            ],
         )
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
-        assert len(iam.policies) == 1
-        assert iam.policies[0]["PolicyName"] == "policy1"
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+        custom_policies = 0
+        for policy in iam.policies:
+            if policy.type == "Custom":
+                custom_policies += 1
+                assert policy.name == "policy1"
+                assert policy.tags == [
+                    {"Key": "string", "Value": "string"},
+                ]
+        assert custom_policies == 1
 
-    @mock_iam
-    def test__list_policies_version__(self):
+    @mock_aws
+    def test_list_policies_version(self):
         iam_client = client("iam")
         policy_name = "policy2"
         policy_document = {
@@ -593,17 +757,22 @@ class Test_IAM_Service:
         iam_client.create_policy(
             PolicyName=policy_name, PolicyDocument=dumps(policy_document)
         )
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
-        assert len(iam.policies) == 1
-        assert iam.policies[0]["PolicyDocument"]["Statement"][0]["Effect"] == "Allow"
-        assert iam.policies[0]["PolicyDocument"]["Statement"][0]["Action"] == "*"
-        assert iam.policies[0]["PolicyDocument"]["Statement"][0]["Resource"] == "*"
+        custom_policies = 0
+        for policy in iam.policies:
+            if policy.type == "Custom":
+                custom_policies += 1
+                assert policy.name == "policy2"
+                assert policy.document["Statement"][0]["Effect"] == "Allow"
+                assert policy.document["Statement"][0]["Action"] == "*"
+                assert policy.document["Statement"][0]["Resource"] == "*"
+        assert custom_policies == 1
 
     # Test IAM List SAML Providers
-    @mock_iam
-    def test__list_saml_providers__(self):
+    @mock_aws
+    def test_list_saml_providers(self):
         iam_client = client("iam")
         xml_template = r"""<EntityDescriptor
     xmlns="urn:oasis:names:tc:SAML:2.0:metadata"
@@ -634,13 +803,223 @@ nTTxU4a7x1naFxzYXK1iQ1vMARKMjDb19QEJIEJKZlDK4uS7yMlf1nFS
         </KeyDescriptor>
 </EntityDescriptor>"""
         saml_provider_name = "test"
-        iam_client.create_saml_provider(
+        saml_arn = iam_client.create_saml_provider(
             SAMLMetadataDocument=xml_template, Name=saml_provider_name
+        )["SAMLProviderArn"]
+
+        # IAM client for this test class
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+
+        assert len(iam.saml_providers) == 1
+        assert saml_arn in iam.saml_providers
+        assert iam.saml_providers[saml_arn].name == saml_provider_name
+        assert iam.saml_providers[saml_arn].arn == saml_arn
+
+    # Test IAM User Inline Policy
+    @mock_aws
+    def test_list_inline_user_policies(self):
+        # IAM Client
+        iam_client = client("iam")
+        # Create IAM User
+        user_name = "test_user"
+        user_arn = iam_client.create_user(UserName=user_name)["User"]["Arn"]
+
+        # Put User Policy
+        policy_name = "test_not_admin_inline_policy"
+        _ = iam_client.put_user_policy(
+            UserName=user_name,
+            PolicyName=policy_name,
+            PolicyDocument=dumps(INLINE_POLICY_NOT_ADMIN),
         )
 
         # IAM client for this test class
-        audit_info = self.set_mocked_audit_info()
-        iam = IAM(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
 
-        assert len(iam.saml_providers) == 1
-        assert iam.saml_providers[0]["Arn"].split("/")[1] == saml_provider_name
+        assert len(iam.users) == 1
+        assert iam.users[0].name == user_name
+        assert iam.users[0].arn == user_arn
+        assert iam.users[0].mfa_devices == []
+        assert iam.users[0].password_last_used is None
+        assert iam.users[0].attached_policies == []
+        assert iam.users[0].inline_policies == [policy_name]
+        assert iam.users[0].tags == []
+
+        # TODO: Workaround until this gets fixed https://github.com/getmoto/moto/issues/6712
+        for policy in iam.policies:
+            if policy.name == policy_name:
+                assert policy == Policy(
+                    name=policy_name,
+                    arn=user_arn,
+                    version_id="v1",
+                    type="Inline",
+                    attached=True,
+                    document=INLINE_POLICY_NOT_ADMIN,
+                    entity=user_name,
+                )
+
+    # Test IAM Group Inline Policy
+    @mock_aws
+    def test_list_inline_group_policies(self):
+        # IAM Client
+        iam_client = client("iam")
+        # Create IAM Group
+        group_name = "test_group"
+        group_arn = iam_client.create_group(GroupName=group_name)["Group"]["Arn"]
+
+        # Put User Policy
+        policy_name = "test_not_admin_inline_policy"
+        _ = iam_client.put_group_policy(
+            GroupName=group_name,
+            PolicyName=policy_name,
+            PolicyDocument=dumps(INLINE_POLICY_NOT_ADMIN),
+        )
+
+        iam_client.delete_policy
+        # IAM client for this test class
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+
+        assert len(iam.groups) == 1
+        assert iam.groups[0].name == group_name
+        assert iam.groups[0].arn == group_arn
+        assert iam.groups[0].attached_policies == []
+        assert iam.groups[0].inline_policies == [policy_name]
+        assert iam.groups[0].users == []
+
+        # TODO: Workaround until this gets fixed https://github.com/getmoto/moto/issues/6712
+        for policy in iam.policies:
+            if policy.name == policy_name:
+                assert policy == Policy(
+                    name=policy_name,
+                    arn=group_arn,
+                    version_id="v1",
+                    type="Inline",
+                    attached=True,
+                    document=INLINE_POLICY_NOT_ADMIN,
+                    entity=group_name,
+                )
+
+    # Test IAM Role Inline Policy
+    @mock_aws
+    def test_list_inline_role_policies(self):
+        # IAM Client
+        iam_client = client("iam")
+        # Create IAM Role
+        role_name = "test_role"
+        role_arn = iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=dumps(ASSUME_ROLE_POLICY_DOCUMENT),
+        )["Role"]["Arn"]
+
+        # Put User Policy
+        policy_name = "test_not_admin_inline_policy"
+        _ = iam_client.put_role_policy(
+            RoleName=role_name,
+            PolicyName=policy_name,
+            PolicyDocument=dumps(INLINE_POLICY_NOT_ADMIN),
+        )
+
+        # IAM client for this test class
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+
+        assert len(iam.roles) == 1
+        assert iam.roles[0].name == role_name
+        assert iam.roles[0].arn == role_arn
+        assert iam.roles[0].assume_role_policy == ASSUME_ROLE_POLICY_DOCUMENT
+        assert not iam.roles[0].is_service_role
+        assert iam.roles[0].attached_policies == []
+        assert iam.roles[0].inline_policies == [policy_name]
+        assert iam.roles[0].tags == []
+
+        # TODO: Workaround until this gets fixed https://github.com/getmoto/moto/issues/6712
+        for policy in iam.policies:
+            if policy.name == policy_name:
+                assert policy == Policy(
+                    name=policy_name,
+                    arn=role_arn,
+                    version_id="v1",
+                    type="Inline",
+                    attached=True,
+                    document=INLINE_POLICY_NOT_ADMIN,
+                    entity=role_name,
+                )
+
+    # Test IAM List Attached Group Policies
+    @mock_aws
+    def test_get_user_temporary_credentials_usage(self):
+        # Generate IAM Client
+        iam_client = client("iam")
+        # Generate IAM user
+        username = "test-user"
+        user = iam_client.create_user(
+            UserName=username,
+        )
+        user_arn = user["User"]["Arn"]
+        # Create Access Key
+        access_key = iam_client.create_access_key(UserName="test-user")
+        access_key_id = access_key["AccessKey"]["AccessKeyId"]
+        # IAM client for this test class
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+
+        assert len(iam.users) == 1
+
+        assert len(iam.access_keys_metadata) == 1
+        assert iam.access_keys_metadata[(username, user_arn)]
+
+        assert iam.access_keys_metadata[(username, user_arn)][0]["UserName"] == username
+        assert (
+            iam.access_keys_metadata[(username, user_arn)][0]["AccessKeyId"]
+            == access_key_id
+        )
+        assert iam.access_keys_metadata[(username, user_arn)][0]["Status"] == "Active"
+        assert iam.access_keys_metadata[(username, user_arn)][0]["CreateDate"]
+
+        assert (
+            iam.last_accessed_services[(username, user_arn)]
+            == IAM_LAST_ACCESSED_SERVICES
+        )
+
+        assert iam.user_temporary_credentials_usage[(username, user_arn)]
+
+    @mock_aws(config={"iam": {"load_aws_managed_policies": True}})
+    def test_list_entities_attached_to_cloudshell_policy(self):
+        iam_client = client("iam")
+        user_name = "test_cloudshell_policy_user"
+        iam_client.create_user(
+            UserName=user_name,
+        )
+        iam_client.attach_user_policy(
+            UserName=user_name,
+            PolicyArn="arn:aws:iam::aws:policy/AWSCloudShellFullAccess",
+        )
+        group_name = "test_cloudshell_policy_group"
+        iam_client.create_group(
+            GroupName=group_name,
+        )
+        iam_client.attach_group_policy(
+            GroupName=group_name,
+            PolicyArn="arn:aws:iam::aws:policy/AWSCloudShellFullAccess",
+        )
+        role_name = "test_cloudshell_policy_role"
+        role_policy = {
+            "Version": "2012-10-17",
+        }
+        iam_client.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=dumps(role_policy),
+        )
+        iam_client.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn="arn:aws:iam::aws:policy/AWSCloudShellFullAccess",
+        )
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_US_EAST_1])
+        iam = IAM(aws_provider)
+        assert len(iam.entities_attached_to_cloudshell_policy) == 3
+        assert iam.entities_attached_to_cloudshell_policy["Users"] == [user_name]
+        assert iam.entities_attached_to_cloudshell_policy["Groups"] == [group_name]
+        assert iam.entities_attached_to_cloudshell_policy["Roles"] == [role_name]

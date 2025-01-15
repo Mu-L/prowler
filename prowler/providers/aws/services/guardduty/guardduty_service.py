@@ -1,117 +1,219 @@
-import threading
 from typing import Optional
 
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
-################################ GuardDuty
-class GuardDuty:
-    def __init__(self, audit_info):
-        self.service = "guardduty"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.audited_partition = audit_info.audited_partition
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class GuardDuty(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.detectors = []
-        self.__threading_call__(self.__list_detectors__)
-        self.__get_detector__(self.regional_clients)
-        self.__list_findings__(self.regional_clients)
-        self.__list_tags_for_resource__()
+        self.__threading_call__(self._list_detectors)
+        self.__threading_call__(self._get_detector, self.detectors)
+        self._list_findings()
+        self._list_members()
+        self._get_administrator_account()
+        self._list_tags_for_resource()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_detectors__(self, regional_client):
+    def _list_detectors(self, regional_client):
         logger.info("GuardDuty - listing detectors...")
         try:
+            detectors = False
             list_detectors_paginator = regional_client.get_paginator("list_detectors")
             for page in list_detectors_paginator.paginate():
                 for detector in page["DetectorIds"]:
+                    detectors = True
+                    arn = f"arn:{self.audited_partition}:guardduty:{regional_client.region}:{self.audited_account}:detector/{detector}"
                     if not self.audit_resources or (
-                        is_resource_filtered(detector, self.audit_resources)
+                        is_resource_filtered(arn, self.audit_resources)
                     ):
-                        arn = f"arn:{self.audited_partition}:guardduty:{regional_client.region}:{self.audited_account}:detector/{detector}"
                         self.detectors.append(
                             Detector(
-                                id=detector, arn=arn, region=regional_client.region
+                                id=detector,
+                                arn=arn,
+                                region=regional_client.region,
+                                enabled_in_account=True,
                             )
                         )
+            if not detectors:
+                self.detectors.append(
+                    Detector(
+                        id="detector/unknown",
+                        arn=self.get_unknown_arn(
+                            region=regional_client.region, resource_type="detector"
+                        ),
+                        region=regional_client.region,
+                        enabled_in_account=False,
+                    )
+                )
         except Exception as error:
             logger.error(
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __get_detector__(self, regional_clients):
+    def _get_detector(self, detector):
         logger.info("GuardDuty - getting detector info...")
         try:
-            for detector in self.detectors:
-                regional_client = regional_clients[detector.region]
-                detector_info = regional_client.get_detector(DetectorId=detector.id)
-                if "Status" in detector_info and detector_info["Status"] == "ENABLED":
+            if detector.id and detector.enabled_in_account:
+                detector_info = self.regional_clients[detector.region].get_detector(
+                    DetectorId=detector.id
+                )
+                if detector_info.get("Status", "DISABLED") == "ENABLED":
                     detector.status = True
+
+                data_sources = detector_info.get("DataSources", {})
+
+                s3_logs = data_sources.get("S3Logs", {})
+                if s3_logs.get("Status", "DISABLED") == "ENABLED":
+                    detector.s3_protection = True
+
+                detector.eks_audit_log_protection = (
+                    True
+                    if data_sources.get("Kubernetes", {})
+                    .get("AuditLogs", {})
+                    .get("Status", "DISABLED")
+                    == "ENABLED"
+                    else False
+                )
+
+                detector.ec2_malware_protection = (
+                    True
+                    if data_sources.get("MalwareProtection", {})
+                    .get("ScanEc2InstanceWithFindings", {})
+                    .get("EbsVolumes", {})
+                    .get("Status", "DISABLED")
+                    == "ENABLED"
+                    else False
+                )
+
+                for feat in detector_info.get("Features", []):
+                    if (
+                        feat.get("Name", "") == "RDS_LOGIN_EVENTS"
+                        and feat.get("Status", "DISABLED") == "ENABLED"
+                    ):
+                        detector.rds_protection = True
+                    elif (
+                        feat.get("Name", "") == "LAMBDA_NETWORK_LOGS"
+                        and feat.get("Status", "DISABLED") == "ENABLED"
+                    ):
+                        detector.lambda_protection = True
+                    elif (
+                        feat.get("Name", "") == "EKS_RUNTIME_MONITORING"
+                        and feat.get("Status", "DISABLED") == "ENABLED"
+                    ):
+                        detector.eks_runtime_monitoring = True
 
         except Exception as error:
             logger.error(
-                f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                f"{error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
-    def __list_findings__(self, regional_clients):
+    def _get_administrator_account(self):
+        logger.info("GuardDuty - getting administrator account...")
+        try:
+            for detector in self.detectors:
+                if detector.id and detector.enabled_in_account:
+                    try:
+                        regional_client = self.regional_clients[detector.region]
+                        detector_administrator = (
+                            regional_client.get_administrator_account(
+                                DetectorId=detector.id
+                            )
+                        )
+                        detector_administrator_account = detector_administrator.get(
+                            "Administrator"
+                        )
+                        if detector_administrator_account:
+                            detector.administrator_account = (
+                                detector_administrator_account.get("AccountId")
+                            )
+                    except Exception as error:
+                        logger.error(
+                            f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                        )
+                        continue
+
+        except Exception as error:
+            logger.error(
+                f"{error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
+            )
+
+    def _list_members(self):
+        logger.info("GuardDuty - listing members...")
+        try:
+            for detector in self.detectors:
+                if detector.id and detector.enabled_in_account:
+                    try:
+                        regional_client = self.regional_clients[detector.region]
+                        list_members_paginator = regional_client.get_paginator(
+                            "list_members"
+                        )
+                        for page in list_members_paginator.paginate(
+                            DetectorId=detector.id,
+                        ):
+                            for member in page["Members"]:
+                                detector.member_accounts.append(member.get("AccountId"))
+                    except Exception as error:
+                        logger.error(
+                            f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                        )
+                        continue
+        except Exception as error:
+            logger.error(
+                f"{error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
+            )
+
+    def _list_findings(self):
         logger.info("GuardDuty - listing findings...")
         try:
             for detector in self.detectors:
-                regional_client = regional_clients[detector.region]
-                list_findings_paginator = regional_client.get_paginator("list_findings")
-                for page in list_findings_paginator.paginate(
-                    DetectorId=detector.id,
-                    FindingCriteria={
-                        "Criterion": {
-                            "severity": {
-                                "Eq": [
-                                    "8",
-                                ],
-                            },
-                            "service.archived": {
-                                "Eq": [
-                                    "false",
-                                ],
-                            },
-                        }
-                    },
-                ):
-                    for finding in page["FindingIds"]:
-                        detector.findings.append(finding)
+                if detector.id and detector.enabled_in_account:
+                    regional_client = self.regional_clients[detector.region]
+                    list_findings_paginator = regional_client.get_paginator(
+                        "list_findings"
+                    )
+                    for page in list_findings_paginator.paginate(
+                        DetectorId=detector.id,
+                        FindingCriteria={
+                            "Criterion": {
+                                "severity": {
+                                    "Eq": [
+                                        "8",
+                                    ],
+                                },
+                                "service.archived": {
+                                    "Eq": [
+                                        "false",
+                                    ],
+                                },
+                            }
+                        },
+                    ):
+                        for finding in page["FindingIds"]:
+                            detector.findings.append(finding)
 
         except Exception as error:
             logger.error(
-                f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                f"{error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
-    def __list_tags_for_resource__(self):
+    def _list_tags_for_resource(self):
         logger.info("Guardduty - List Tags...")
         try:
             for detector in self.detectors:
-                regional_client = self.regional_clients[detector.region]
-                response = regional_client.list_tags_for_resource(
-                    ResourceArn=detector.arn
-                )["Tags"]
-                detector.tags = [response]
+                if detector.arn and detector.enabled_in_account:
+                    regional_client = self.regional_clients[detector.region]
+                    response = regional_client.list_tags_for_resource(
+                        ResourceArn=detector.arn
+                    )["Tags"]
+                    detector.tags = [response]
         except Exception as error:
             logger.error(
-                f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                f"{error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
 
@@ -119,6 +221,15 @@ class Detector(BaseModel):
     id: str
     arn: str
     region: str
+    enabled_in_account: bool
     status: bool = None
     findings: list = []
+    member_accounts: list = []
+    administrator_account: str = None
     tags: Optional[list] = []
+    s3_protection: bool = False
+    rds_protection: bool = False
+    eks_audit_log_protection: bool = False
+    eks_runtime_monitoring: bool = False
+    lambda_protection: bool = False
+    ec2_malware_protection: bool = False

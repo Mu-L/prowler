@@ -2,15 +2,15 @@ from unittest.mock import patch
 
 import botocore
 import yaml
-from boto3 import client, session
-from moto import mock_ssm
-from moto.core import DEFAULT_ACCOUNT_ID
+from boto3 import client
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.audit_info import AWS_Audit_Info
 from prowler.providers.aws.services.ssm.ssm_service import SSM, ResourceStatus
-
-# Mock Test Region
-AWS_REGION = "eu-west-1"
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 # Mocking Access Analyzer Calls
 make_api_call = botocore.client.BaseClient._make_api_call
@@ -53,15 +53,25 @@ def mock_make_api_call(self, operation_name, kwarg):
                 },
             ],
         }
+    if operation_name == "DescribeInstanceInformation":
+        return {
+            "InstanceInformationList": [
+                {
+                    "InstanceId": "test-instance-id",
+                },
+            ],
+        }
 
     return make_api_call(self, operation_name, kwarg)
 
 
 # Mock generate_regional_clients()
-def mock_generate_regional_clients(service, audit_info):
-    regional_client = audit_info.audit_session.client(service, region_name=AWS_REGION)
-    regional_client.region = AWS_REGION
-    return {AWS_REGION: regional_client}
+def mock_generate_regional_clients(provider, service):
+    regional_client = provider._session.current_session.client(
+        service, region_name=AWS_REGION_US_EAST_1
+    )
+    regional_client.region = AWS_REGION_US_EAST_1
+    return {AWS_REGION_US_EAST_1: regional_client}
 
 
 # SSM Document YAML Template
@@ -119,55 +129,32 @@ mainSteps:
 # Patch every AWS call using Boto3 and generate_regional_clients to have 1 client
 @patch("botocore.client.BaseClient._make_api_call", new=mock_make_api_call)
 @patch(
-    "prowler.providers.aws.services.ssm.ssm_service.generate_regional_clients",
+    "prowler.providers.aws.aws_provider.AwsProvider.generate_regional_clients",
     new=mock_generate_regional_clients,
 )
 class Test_SSM_Service:
-    # Mocked Audit Info
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=None,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=AWS_REGION,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test SSM Client
-    @mock_ssm
-    def test__get_client__(self):
-        ssm = SSM(self.set_mocked_audit_info())
-        assert ssm.regional_clients[AWS_REGION].__class__.__name__ == "SSM"
+    @mock_aws
+    def test_get_client(self):
+        ssm = SSM(set_mocked_aws_provider([AWS_REGION_US_EAST_1]))
+        assert ssm.regional_clients[AWS_REGION_US_EAST_1].__class__.__name__ == "SSM"
 
     # Test SSM Session
-    @mock_ssm
+    @mock_aws
     def test__get_session__(self):
-        ssm = SSM(self.set_mocked_audit_info())
+        ssm = SSM(set_mocked_aws_provider([AWS_REGION_US_EAST_1]))
         assert ssm.session.__class__.__name__ == "Session"
 
     # Test SSM Service
-    @mock_ssm
+    @mock_aws
     def test__get_service__(self):
-        ssm = SSM(self.set_mocked_audit_info())
+        ssm = SSM(set_mocked_aws_provider([AWS_REGION_US_EAST_1]))
         assert ssm.service == "ssm"
 
-    @mock_ssm
-    def test__list_documents__(self):
+    @mock_aws
+    def test_list_documents(self):
         # Create SSM Document
-        ssm_client = client("ssm", region_name=AWS_REGION)
+        ssm_client = client("ssm", region_name=AWS_REGION_US_EAST_1)
         ssm_document_name = "test-document"
         _ = ssm_client.create_document(
             Content=ssm_document_yaml,
@@ -182,31 +169,36 @@ class Test_SSM_Service:
         ssm_client.modify_document_permission(
             Name=ssm_document_name,
             PermissionType="Share",
-            AccountIdsToAdd=[DEFAULT_ACCOUNT_ID],
+            AccountIdsToAdd=[AWS_ACCOUNT_NUMBER],
         )
 
-        ssm = SSM(self.set_mocked_audit_info())
+        ssm = SSM(set_mocked_aws_provider([AWS_REGION_US_EAST_1]))
+
+        document_arn = f"arn:aws:ssm:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:document/{ssm_document_name}"
 
         assert len(ssm.documents) == 1
         assert ssm.documents
-        assert ssm.documents[ssm_document_name]
-        assert ssm.documents[ssm_document_name].name == ssm_document_name
-        assert ssm.documents[ssm_document_name].region == AWS_REGION
-        assert ssm.documents[ssm_document_name].tags == [
+        assert ssm.documents[document_arn]
+        assert ssm.documents[document_arn].arn == document_arn
+        assert ssm.documents[document_arn].name == ssm_document_name
+        assert ssm.documents[document_arn].region == AWS_REGION_US_EAST_1
+        assert ssm.documents[document_arn].tags == [
             {"Key": "test", "Value": "test"},
         ]
-        assert ssm.documents[ssm_document_name].content == yaml.safe_load(
-            ssm_document_yaml
-        )
-        assert ssm.documents[ssm_document_name].account_owners == [DEFAULT_ACCOUNT_ID]
+        assert ssm.documents[document_arn].content == yaml.safe_load(ssm_document_yaml)
+        assert ssm.documents[document_arn].account_owners == [AWS_ACCOUNT_NUMBER]
 
-    @mock_ssm
-    def test__list_resource_compliance_summaries__(self):
-        ssm = SSM(self.set_mocked_audit_info())
+    @mock_aws
+    def test_list_resource_compliance_summaries(self):
+        ssm = SSM(set_mocked_aws_provider([AWS_REGION_US_EAST_1]))
         instance_id = "i-1234567890abcdef0"
         assert len(ssm.compliance_resources) == 1
         assert ssm.compliance_resources
         assert ssm.compliance_resources[instance_id]
         assert ssm.compliance_resources[instance_id].id == instance_id
-        assert ssm.compliance_resources[instance_id].region == AWS_REGION
+        assert (
+            ssm.compliance_resources[instance_id].arn
+            == f"arn:aws:ec2:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:instance/{instance_id}"
+        )
+        assert ssm.compliance_resources[instance_id].region == AWS_REGION_US_EAST_1
         assert ssm.compliance_resources[instance_id].status == ResourceStatus.COMPLIANT

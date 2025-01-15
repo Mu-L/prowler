@@ -1,6 +1,5 @@
 name: 🐞 Bug Report
 description: Create a report to help us improve
-title: "[Bug]: "
 labels: ["bug", "status/needs-triage"]
 
 body:
@@ -12,7 +11,7 @@ body:
       placeholder: |-
         1. What command are you running?
         2. Cloud provider you are launching
-        3. Environment you have like single account, multi-account, organizations, multi or single subsctiption, etc.
+        3. Environment you have, like single account, multi-account, organizations, multi or single subscription, etc.
         4. See error
     validations:
       required: true
@@ -27,7 +26,7 @@ body:
     id: actual
     attributes:
       label: Actual Result with Screenshots or Logs
-      description: If applicable, add screenshots to help explain your problem. Also, you can add logs (anonymize them first!). Here a command that may help to share a log `prowler <your arguments> --log-level DEBUG --log-file $(date +%F)_debug.log` then attach here the log file.
+      description: If applicable, add screenshots to help explain your problem. Also, you can add logs (anonymize them first!). Here a command that may help to share a log `prowler <your arguments> --log-level ERROR --log-file $(date +%F)_error.log` then attach here the log file.
     validations:
       required: true
   - type: dropdown

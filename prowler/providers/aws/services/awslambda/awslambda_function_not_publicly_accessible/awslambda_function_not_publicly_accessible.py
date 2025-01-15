@@ -1,5 +1,6 @@
 from prowler.lib.check.models import Check, Check_Report_AWS
 from prowler.providers.aws.services.awslambda.awslambda_client import awslambda_client
+from prowler.providers.aws.services.iam.lib.policy import is_policy_public
 
 
 class awslambda_function_not_publicly_accessible(Check):
@@ -13,30 +14,14 @@ class awslambda_function_not_publicly_accessible(Check):
             report.resource_tags = function.tags
 
             report.status = "PASS"
-            report.status_extended = f"Lambda function {function.name} has a policy resource-based policy not public"
-
-            public_access = False
-            if function.policy:
-                for statement in function.policy["Statement"]:
-                    # Only check allow statements
-                    if statement["Effect"] == "Allow":
-                        if (
-                            "*" in statement["Principal"]
-                            or (
-                                "AWS" in statement["Principal"]
-                                and "*" in statement["Principal"]["AWS"]
-                            )
-                            or (
-                                "CanonicalUser" in statement["Principal"]
-                                and "*" in statement["Principal"]["CanonicalUser"]
-                            )
-                        ):
-                            public_access = True
-                            break
-
-            if public_access:
+            report.status_extended = f"Lambda function {function.name} has a policy resource-based policy not public."
+            if is_policy_public(
+                function.policy,
+                awslambda_client.audited_account,
+                is_cross_account_allowed=True,
+            ):
                 report.status = "FAIL"
-                report.status_extended = f"Lambda function {function.name} has a policy resource-based policy with public access"
+                report.status_extended = f"Lambda function {function.name} has a policy resource-based policy with public access."
 
             findings.append(report)
 

@@ -1,31 +1,21 @@
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################### Shield
-class Shield:
-    def __init__(self, audit_info):
-        self.service = "shield"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        global_client = generate_regional_clients(
-            self.service, audit_info, global_service=True
-        )
+class Shield(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider, global_service=True)
         self.protections = {}
         self.enabled = False
-        if global_client:
-            self.client = list(global_client.values())[0]
-            self.region = self.client.region
-            self.enabled = self.__get_subscription_state__()
-            if self.enabled:
-                self.__list_protections__()
+        self.enabled = self._get_subscription_state()
+        if self.enabled:
+            self._list_protections()
 
-    def __get_session__(self):
-        return self.session
-
-    def __get_subscription_state__(self):
+    def _get_subscription_state(self):
         logger.info("Shield - Getting Subscription State...")
         try:
             return (
@@ -38,7 +28,7 @@ class Shield:
                 f"{self.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __list_protections__(self):
+    def _list_protections(self):
         logger.info("Shield - Listing Protections...")
         try:
             list_protections_paginator = self.client.get_paginator("list_protections")

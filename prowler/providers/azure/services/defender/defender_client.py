@@ -1,4 +1,4 @@
-from prowler.providers.azure.lib.audit_info.audit_info import azure_audit_info
 from prowler.providers.azure.services.defender.defender_service import Defender
+from prowler.providers.common.provider import Provider
 
-defender_client = Defender(azure_audit_info)
+defender_client = Defender(Provider.get_global_provider())

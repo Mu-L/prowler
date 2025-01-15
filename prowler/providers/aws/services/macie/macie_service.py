@@ -1,34 +1,24 @@
-import threading
-
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## Macie
-class Macie:
-    def __init__(self, audit_info):
-        self.service = "macie2"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class Macie(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__("macie2", provider)
         self.sessions = []
-        self.__threading_call__(self.__get_macie_session__)
+        self.__threading_call__(self._get_macie_session)
+        self.__threading_call__(
+            self._get_automated_discovery_configuration, self.sessions
+        )
 
-    def __get_session__(self):
-        return self.session
+    def _get_session_arn_template(self, region):
+        return f"arn:{self.audited_partition}:macie:{region}:{self.audited_account}:session"
 
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __get_macie_session__(self, regional_client):
+    def _get_macie_session(self, regional_client):
         logger.info("Macie - Get Macie Session...")
         try:
             self.sessions.append(
@@ -51,7 +41,24 @@ class Macie:
                     f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
                 )
 
+    def _get_automated_discovery_configuration(self, session):
+        logger.info("Macie - Get Automated Discovery Configuration...")
+        try:
+            if session.status == "ENABLED":
+                regional_client = self.regional_clients[session.region]
+                session.automated_discovery_status = (
+                    regional_client.get_automated_discovery_configuration().get(
+                        "status", "DISABLED"
+                    )
+                )
+
+        except Exception as error:
+            logger.error(
+                f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+            )
+
 
 class Session(BaseModel):
     status: str
+    automated_discovery_status: str = "DISABLED"
     region: str

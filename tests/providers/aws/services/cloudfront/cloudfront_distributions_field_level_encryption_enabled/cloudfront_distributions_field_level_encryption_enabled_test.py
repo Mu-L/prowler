@@ -1,16 +1,15 @@
 from unittest import mock
 
-from moto.core import DEFAULT_ACCOUNT_ID
-
 from prowler.providers.aws.services.cloudfront.cloudfront_service import (
     DefaultCacheConfigBehaviour,
     Distribution,
     ViewerProtocolPolicy,
 )
+from tests.providers.aws.utils import AWS_ACCOUNT_NUMBER
 
 DISTRIBUTION_ID = "E27LVI50CSW06W"
 DISTRIBUTION_ARN = (
-    f"arn:aws:cloudfront::{DEFAULT_ACCOUNT_ID}:distribution/{DISTRIBUTION_ID}"
+    f"arn:aws:cloudfront::{AWS_ACCOUNT_NUMBER}:distribution/{DISTRIBUTION_ID}"
 )
 REGION = "eu-west-1"
 
@@ -36,7 +35,7 @@ class Test_cloudfront_distributions_field_level_encryption_enabled:
     def test_one_distribution_field_level_encryption_enabled(self):
         cloudfront_client = mock.MagicMock
         cloudfront_client.distributions = {
-            "DISTRIBUTION_ID": Distribution(
+            DISTRIBUTION_ID: Distribution(
                 arn=DISTRIBUTION_ARN,
                 id=DISTRIBUTION_ID,
                 region=REGION,
@@ -46,6 +45,7 @@ class Test_cloudfront_distributions_field_level_encryption_enabled:
                     viewer_protocol_policy=ViewerProtocolPolicy.https_only,
                     field_level_encryption_id="AAAAAAAA",
                 ),
+                origin_failover=False,
             )
         }
 
@@ -68,13 +68,14 @@ class Test_cloudfront_distributions_field_level_encryption_enabled:
             assert result[0].status == "PASS"
             assert (
                 result[0].status_extended
-                == f"CloudFront Distribution {DISTRIBUTION_ID} has Field Level Encryption enabled"
+                == f"CloudFront Distribution {DISTRIBUTION_ID} has Field Level Encryption enabled."
             )
+            assert result[0].resource_tags == []
 
     def test_one_distribution_field_level_encryption_disabled(self):
         cloudfront_client = mock.MagicMock
         cloudfront_client.distributions = {
-            "DISTRIBUTION_ID": Distribution(
+            DISTRIBUTION_ID: Distribution(
                 arn=DISTRIBUTION_ARN,
                 id=DISTRIBUTION_ID,
                 region=REGION,
@@ -84,6 +85,7 @@ class Test_cloudfront_distributions_field_level_encryption_enabled:
                     viewer_protocol_policy=ViewerProtocolPolicy.https_only,
                     field_level_encryption_id="",
                 ),
+                origin_failover=False,
             )
         }
 
@@ -106,5 +108,6 @@ class Test_cloudfront_distributions_field_level_encryption_enabled:
             assert result[0].status == "FAIL"
             assert (
                 result[0].status_extended
-                == f"CloudFront Distribution {DISTRIBUTION_ID} has Field Level Encryption disabled"
+                == f"CloudFront Distribution {DISTRIBUTION_ID} has Field Level Encryption disabled."
             )
+            assert result[0].resource_tags == []

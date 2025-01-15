@@ -1,43 +1,27 @@
 import json
-import threading
 from typing import Optional
 
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## KMS
-class KMS:
-    def __init__(self, audit_info):
-        self.service = "kms"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class KMS(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.keys = []
-        self.__threading_call__(self.__list_keys__)
+        self.__threading_call__(self._list_keys)
         if self.keys:
-            self.__describe_key__()
-            self.__get_key_rotation_status__()
-            self.__get_key_policy__()
-            self.__list_resource_tags__()
+            self._describe_key()
+            self._get_key_rotation_status()
+            self._get_key_policy()
+            self._list_resource_tags()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_keys__(self, regional_client):
+    def _list_keys(self, regional_client):
         logger.info("KMS - Listing Keys...")
         try:
             list_keys_paginator = regional_client.get_paginator("list_keys")
@@ -58,7 +42,7 @@ class KMS:
                 f"{regional_client.region} -- {error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
-    def __describe_key__(self):
+    def _describe_key(self):
         logger.info("KMS - Describing Key...")
         try:
             for key in self.keys:
@@ -73,7 +57,7 @@ class KMS:
                 f"{regional_client.region} -- {error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
-    def __get_key_rotation_status__(self):
+    def _get_key_rotation_status(self):
         logger.info("KMS - Get Key Rotation Status...")
         try:
             for key in self.keys:
@@ -92,7 +76,7 @@ class KMS:
                 f"{regional_client.region} -- {error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
-    def __get_key_policy__(self):
+    def _get_key_policy(self):
         logger.info("KMS - Get Key Policy...")
         try:
             for key in self.keys:
@@ -110,19 +94,22 @@ class KMS:
                 f"{regional_client.region} -- {error.__class__.__name__}:{error.__traceback__.tb_lineno} -- {error}"
             )
 
-    def __list_resource_tags__(self):
+    def _list_resource_tags(self):
         logger.info("KMS - List Tags...")
         for key in self.keys:
-            try:
-                regional_client = self.regional_clients[key.region]
-                response = regional_client.list_resource_tags(
-                    KeyId=key.id,
-                )["Tags"]
-                key.tags = response
-            except Exception as error:
-                logger.error(
-                    f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
-                )
+            if (
+                key.manager and key.manager == "CUSTOMER"
+            ):  # only check customer KMS keys
+                try:
+                    regional_client = self.regional_clients[key.region]
+                    response = regional_client.list_resource_tags(
+                        KeyId=key.id,
+                    )["Tags"]
+                    key.tags = response
+                except Exception as error:
+                    logger.error(
+                        f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                    )
 
 
 class Key(BaseModel):

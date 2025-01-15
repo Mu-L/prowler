@@ -1,6 +1,6 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.trustedadvisor.trustedadvisor_service import (
     TrustedAdvisor,
 )
+from prowler.providers.common.provider import Provider
 
-trustedadvisor_client = TrustedAdvisor(current_audit_info)
+trustedadvisor_client = TrustedAdvisor(Provider.get_global_provider())

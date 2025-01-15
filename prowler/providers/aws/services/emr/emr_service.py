@@ -1,41 +1,29 @@
-import threading
 from enum import Enum
 from typing import Optional
 
+from botocore.client import ClientError
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## EMR
-class EMR:
-    def __init__(self, audit_info):
-        self.service = "emr"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class EMR(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.clusters = {}
         self.block_public_access_configuration = {}
-        self.__threading_call__(self.__list_clusters__)
-        self.__threading_call__(self.__describe_cluster__)
-        self.__threading_call__(self.__get_block_public_access_configuration__)
+        self.__threading_call__(self._list_clusters)
+        self.__threading_call__(self._describe_cluster)
+        self.__threading_call__(self._get_block_public_access_configuration)
 
-    def __get_session__(self):
-        return self.session
+    def _get_cluster_arn_template(self, region):
+        return f"arn:{self.audited_partition}:elasticmapreduce:{region}:{self.audited_account}:cluster"
 
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_clusters__(self, regional_client):
+    def _list_clusters(self, regional_client):
         logger.info("EMR - Listing Clusters...")
         try:
             list_clusters_paginator = regional_client.get_paginator("list_clusters")
@@ -66,15 +54,24 @@ class EMR:
                 f" {error}"
             )
 
-    def __describe_cluster__(self, regional_client):
+    def _describe_cluster(self, regional_client):
         logger.info("EMR - Describing Clusters...")
         try:
             for cluster in self.clusters.values():
                 if cluster.region == regional_client.region:
-                    describe_cluster_parameters = {"ClusterId": cluster.id}
-                    cluster_info = regional_client.describe_cluster(
-                        **describe_cluster_parameters
-                    )
+                    try:
+                        describe_cluster_parameters = {"ClusterId": cluster.id}
+                        cluster_info = regional_client.describe_cluster(
+                            **describe_cluster_parameters
+                        )
+                    except ClientError as error:
+                        if error.response["Error"]["Code"] == "InvalidRequestException":
+                            logger.warning(
+                                f"{regional_client.region} --"
+                                f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
+                                f" {error}"
+                            )
+                        continue
 
                     # Master Node Security Groups
                     master_node_security_group = cluster_info["Cluster"][
@@ -114,9 +111,9 @@ class EMR:
                     master_public_dns_name = cluster_info["Cluster"].get(
                         "MasterPublicDnsName"
                     )
-                    self.clusters[
-                        cluster.id
-                    ].master_public_dns_name = master_public_dns_name
+                    self.clusters[cluster.id].master_public_dns_name = (
+                        master_public_dns_name
+                    )
                     # Set cluster Public/Private
                     # Public EMR cluster have their DNS ending with .amazonaws.com
                     # while private ones have format of ip-xxx-xx-xx.us-east-1.compute.internal.
@@ -134,7 +131,7 @@ class EMR:
                 f" {error}"
             )
 
-    def __get_block_public_access_configuration__(self, regional_client):
+    def _get_block_public_access_configuration(self, regional_client):
         """Returns the Amazon EMR block public access configuration for your Amazon Web Services account in the current Region."""
         logger.info("EMR - Getting Block Public Access Configuration...")
         try:
@@ -142,12 +139,12 @@ class EMR:
                 regional_client.get_block_public_access_configuration()
             )
 
-            self.block_public_access_configuration[
-                regional_client.region
-            ] = BlockPublicAccessConfiguration(
-                block_public_security_group_rules=block_public_access_configuration[
-                    "BlockPublicAccessConfiguration"
-                ]["BlockPublicSecurityGroupRules"]
+            self.block_public_access_configuration[regional_client.region] = (
+                BlockPublicAccessConfiguration(
+                    block_public_security_group_rules=block_public_access_configuration[
+                        "BlockPublicAccessConfiguration"
+                    ]["BlockPublicSecurityGroupRules"]
+                )
             )
         except Exception as error:
             logger.error(

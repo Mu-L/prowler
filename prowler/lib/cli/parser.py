@@ -2,20 +2,21 @@ import argparse
 import sys
 from argparse import RawTextHelpFormatter
 
+from dashboard.lib.arguments.arguments import init_dashboard_parser
 from prowler.config.config import (
     available_compliance_frameworks,
+    available_output_formats,
+    check_current_version,
+    default_config_file_path,
+    default_fixer_config_file_path,
     default_output_directory,
-    prowler_version,
 )
-from prowler.providers.aws.aws_provider import get_aws_available_regions
-from prowler.providers.aws.lib.arn.arn import is_valid_arn
-
-
-def arn_type(arn: str) -> bool:
-    """arn_type returns a string ARN if it is valid and raises an argparse.ArgumentError if not."""
-    if not is_valid_arn(arn):
-        raise argparse.ArgumentError("Invalid ARN")
-    return arn
+from prowler.lib.check.models import Severity
+from prowler.lib.outputs.common import Status
+from prowler.providers.common.arguments import (
+    init_providers_parser,
+    validate_provider_arguments,
+)
 
 
 class ProwlerArgumentParser:
@@ -25,18 +26,29 @@ class ProwlerArgumentParser:
         self.parser = argparse.ArgumentParser(
             prog="prowler",
             formatter_class=RawTextHelpFormatter,
+            usage="prowler [-h] [--version] {aws,azure,gcp,kubernetes,dashboard} ...",
             epilog="""
-To see the different available options on a specific provider, run:
-    prowler {provider} -h|--help
-Detailed documentation at https://docs.prowler.cloud
+Available Cloud Providers:
+  {aws,azure,gcp,kubernetes}
+    aws                 AWS Provider
+    azure               Azure Provider
+    gcp                 GCP Provider
+    kubernetes          Kubernetes Provider
+
+Available components:
+    dashboard           Local dashboard
+
+To see the different available options on a specific component, run:
+    prowler {provider|dashboard} -h|--help
+
+Detailed documentation at https://docs.prowler.com
 """,
         )
         # Default
         self.parser.add_argument(
-            "-v",
             "--version",
-            action="version",
-            version=f"Prowler {prowler_version}",
+            "-v",
+            action="store_true",
             help="show Prowler version",
         )
         # Common arguments parser
@@ -44,8 +56,7 @@ Detailed documentation at https://docs.prowler.cloud
 
         # Providers Parser
         self.subparsers = self.parser.add_subparsers(
-            title="Prowler Available Cloud Providers",
-            dest="provider",
+            title="Available Cloud Providers", dest="provider", help=argparse.SUPPRESS
         )
 
         self.__init_outputs_parser__()
@@ -53,10 +64,16 @@ Detailed documentation at https://docs.prowler.cloud
         self.__init_checks_parser__()
         self.__init_exclude_checks_parser__()
         self.__init_list_checks_parser__()
+        self.__init_mutelist_parser__()
+        self.__init_config_parser__()
+        self.__init_custom_checks_metadata_parser__()
+        self.__init_third_party_integrations_parser__()
 
         # Init Providers Arguments
-        self.__init_aws_parser__()
-        self.__init_azure_parser__()
+        init_providers_parser(self)
+
+        # Dahboard Parser
+        init_dashboard_parser(self)
 
     def parse(self, args=None) -> argparse.Namespace:
         """
@@ -65,6 +82,10 @@ Detailed documentation at https://docs.prowler.cloud
         # We can override sys.argv
         if args:
             sys.argv = args
+
+        if len(sys.argv) == 2 and sys.argv[1] in ("-v", "--version"):
+            print(check_current_version())
+            sys.exit(0)
 
         # Set AWS as the default provider if no provider is supplied
         if len(sys.argv) == 1:
@@ -87,12 +108,17 @@ Detailed documentation at https://docs.prowler.cloud
         # A provider is always required
         if not args.provider:
             self.parser.error(
-                "A provider is required to see its specific help options."
+                "A provider/component is required to see its specific help options."
             )
 
         # Only Logging Configuration
-        if args.only_logs:
+        if args.provider != "dashboard" and (args.only_logs or args.list_checks_json):
             args.no_banner = True
+
+        # Extra validation for provider arguments
+        valid, message = validate_provider_arguments(args)
+        if not valid:
+            self.parser.error(f"{args.provider}: {message}")
 
         return args
 
@@ -110,28 +136,29 @@ Detailed documentation at https://docs.prowler.cloud
             "Outputs"
         )
         common_outputs_parser.add_argument(
-            "-q",
-            "--quiet",
-            action="store_true",
-            help="Store or send only Prowler failed findings",
-        )
-        common_outputs_parser.add_argument(
-            "-M",
-            "--output-modes",
+            "--status",
             nargs="+",
-            help="Output modes, by default csv, html and json",
-            default=["csv", "json", "html"],
-            choices=["csv", "json", "json-asff", "html"],
+            help=f"Filter by the status of the findings {[status.value for status in Status]}",
+            choices=[status.value for status in Status],
         )
         common_outputs_parser.add_argument(
-            "-F",
+            "--output-formats",
+            "--output-modes",
+            "-M",
+            nargs="+",
+            help="Output modes, by default csv and json-oscf are saved. When using AWS Security Hub integration, json-asff output is also saved.",
+            default=["csv", "json-ocsf", "html"],
+            choices=available_output_formats,
+        )
+        common_outputs_parser.add_argument(
             "--output-filename",
+            "-F",
             nargs="?",
             help="Custom output report name without the file extension, if not specified will use default output/prowler-output-ACCOUNT_NUM-OUTPUT_DATE.format",
         )
         common_outputs_parser.add_argument(
-            "-o",
             "--output-directory",
+            "-o",
             nargs="?",
             help="Custom output directory, by default the folder where Prowler is stored",
             default=default_output_directory,
@@ -139,16 +166,28 @@ Detailed documentation at https://docs.prowler.cloud
         common_outputs_parser.add_argument(
             "--verbose",
             action="store_true",
-            help="Display detailed information about findings",
+            help="Runs showing all checks executed and results",
         )
         common_outputs_parser.add_argument(
-            "-z",
             "--ignore-exit-code-3",
+            "-z",
             action="store_true",
             help="Failed checks do not trigger exit code 3",
         )
         common_outputs_parser.add_argument(
-            "-b", "--no-banner", action="store_true", help="Hide Prowler banner"
+            "--no-banner", "-b", action="store_true", help="Hide Prowler banner"
+        )
+        common_outputs_parser.add_argument(
+            "--no-color",
+            action="store_true",
+            help="Disable color codes in output",
+        )
+
+        common_outputs_parser.add_argument(
+            "--unix-timestamp",
+            action="store_true",
+            default=False,
+            help="Set the output timestamp format as unix timestamps instead of iso format timestamps (default mode).",
         )
 
     def __init_logging_parser__(self):
@@ -180,49 +219,72 @@ Detailed documentation at https://docs.prowler.cloud
             "Exclude checks/services to run"
         )
         exclude_checks_parser.add_argument(
-            "-e", "--excluded-checks", nargs="+", help="Checks to exclude"
+            "--excluded-check",
+            "--excluded-checks",
+            "-e",
+            nargs="+",
+            help="Checks to exclude",
         )
         exclude_checks_parser.add_argument(
-            "--excluded-services", nargs="+", help="Services to exclude"
+            "--excluded-service",
+            "--excluded-services",
+            nargs="+",
+            help="Services to exclude",
         )
 
     def __init_checks_parser__(self):
         # Set checks to execute
         common_checks_parser = self.common_providers_parser.add_argument_group(
-            "Specify checks/services to run arguments"
+            "Specify checks/services to run"
         )
         # The following arguments needs to be set exclusivelly
         group = common_checks_parser.add_mutually_exclusive_group()
         group.add_argument(
-            "-c", "--checks", nargs="+", help="List of checks to be executed."
+            "--check",
+            "--checks",
+            "-c",
+            nargs="+",
+            help="List of checks to be executed.",
         )
         group.add_argument(
-            "-C",
             "--checks-file",
+            "-C",
             nargs="?",
             help="JSON file containing the checks to be executed. See config/checklist_example.json",
         )
         group.add_argument(
-            "-s", "--services", nargs="+", help="List of services to be executed."
-        )
-        group.add_argument(
-            "--severity",
+            "--service",
+            "--services",
+            "-s",
             nargs="+",
-            help="List of severities to be executed [informational, low, medium, high, critical]",
-            choices=["informational", "low", "medium", "high", "critical"],
+            help="List of services to be executed.",
+        )
+        common_checks_parser.add_argument(
+            "--severity",
+            "--severities",
+            nargs="+",
+            help=f"Severities to be executed {[severity.value for severity in Severity]}",
+            choices=[severity.value for severity in Severity],
         )
         group.add_argument(
             "--compliance",
             nargs="+",
-            help="Compliance Framework to check against for. The format should be the following: framework_version_provider (e.g.: ens_rd2022_aws)",
+            help="Compliance Framework to check against for. The format should be the following: framework_version_provider (e.g.: cis_3.0_aws)",
             choices=available_compliance_frameworks,
         )
         group.add_argument(
+            "--category",
             "--categories",
             nargs="+",
             help="List of categories to be executed.",
             default=[],
-            # Pending validate choices
+            # TODO: Pending validate choices
+        )
+        common_checks_parser.add_argument(
+            "--checks-folder",
+            "-x",
+            nargs="?",
+            help="Specify external directory with custom checks (each check must have a folder with the required files, see more in https://docs.prowler.cloud/en/latest/tutorials/misc/#custom-checks).",
         )
 
     def __init_list_checks_parser__(self):
@@ -232,18 +294,28 @@ Detailed documentation at https://docs.prowler.cloud
         )
         list_group = list_checks_parser.add_mutually_exclusive_group()
         list_group.add_argument(
-            "-l", "--list-checks", action="store_true", help="List checks"
+            "--list-checks", "-l", action="store_true", help="List checks"
         )
         list_group.add_argument(
-            "--list-services", action="store_true", help="List services"
+            "--list-checks-json",
+            action="store_true",
+            help="Output a list of checks in json format to use with --checks-file option",
         )
         list_group.add_argument(
-            "--list-compliance", action="store_true", help="List compliance frameworks"
+            "--list-services",
+            action="store_true",
+            help="List covered services by given provider",
+        )
+        list_group.add_argument(
+            "--list-compliance",
+            "--list-compliances",
+            action="store_true",
+            help="List all available compliance frameworks",
         )
         list_group.add_argument(
             "--list-compliance-requirements",
             nargs="+",
-            help="List compliance requirements for a given requirement",
+            help="List requirements and checks per compliance framework",
             choices=available_compliance_frameworks,
         )
         list_group.add_argument(
@@ -251,182 +323,64 @@ Detailed documentation at https://docs.prowler.cloud
             action="store_true",
             help="List the available check's categories",
         )
+        list_group.add_argument(
+            "--list-fixer",
+            "--list-fixers",
+            "--list-remediations",
+            action="store_true",
+            help="List fixers available for the provider",
+        )
 
-    def __init_aws_parser__(self):
-        """Init the AWS Provider CLI parser"""
-        aws_parser = self.subparsers.add_parser(
-            "aws", parents=[self.common_providers_parser], help="AWS Provider"
+    def __init_mutelist_parser__(self):
+        mutelist_subparser = self.common_providers_parser.add_argument_group("Mutelist")
+        mutelist_subparser.add_argument(
+            "--mutelist-file",
+            "-w",
+            nargs="?",
+            help="Path for mutelist YAML file. See example prowler/config/<provider>_mutelist.yaml for reference and format. For AWS provider, it also accepts AWS DynamoDB Table, Lambda ARNs or S3 URIs, see more in https://docs.prowler.cloud/en/latest/tutorials/mutelist/",
         )
-        # Authentication Methods
-        aws_auth_subparser = aws_parser.add_argument_group("Authentication Modes")
-        aws_auth_subparser.add_argument(
-            "-p",
-            "--profile",
+
+    def __init_config_parser__(self):
+        config_parser = self.common_providers_parser.add_argument_group("Configuration")
+        config_parser.add_argument(
+            "--config-file",
+            nargs="?",
+            default=default_config_file_path,
+            help="Set configuration file path",
+        )
+        config_parser.add_argument(
+            "--fixer-config",
+            nargs="?",
+            default=default_fixer_config_file_path,
+            help="Set configuration fixer file path",
+        )
+
+    def __init_custom_checks_metadata_parser__(self):
+        # CustomChecksMetadata
+        custom_checks_metadata_subparser = (
+            self.common_providers_parser.add_argument_group("Custom Checks Metadata")
+        )
+        custom_checks_metadata_subparser.add_argument(
+            "--custom-checks-metadata-file",
             nargs="?",
             default=None,
-            help="AWS profile to launch prowler with",
+            help="Path for the custom checks metadata YAML file. See example prowler/config/custom_checks_metadata_example.yaml for reference and format. See more in https://docs.prowler.cloud/en/latest/tutorials/custom-checks-metadata/",
         )
-        aws_auth_subparser.add_argument(
-            "-R",
-            "--role",
-            nargs="?",
-            default=None,
-            help="ARN of the role to be assumed",
-            # Pending ARN validation
-        )
-        aws_auth_subparser.add_argument(
-            "-T",
-            "--session-duration",
-            nargs="?",
-            default=3600,
-            type=int,
-            help="Assumed role session duration in seconds, must be between 900 and 43200. Default: 3600",
-            # Pending session duration validation
-        )
-        aws_auth_subparser.add_argument(
-            "-I",
-            "--external-id",
-            nargs="?",
-            default=None,
-            help="External ID to be passed when assuming role",
-        )
-        # AWS Regions
-        aws_regions_subparser = aws_parser.add_argument_group("AWS Regions")
-        aws_regions_subparser.add_argument(
-            "-f",
-            "--region",
-            "--filter-region",
-            nargs="+",
-            help="AWS region names to run Prowler against",
-            choices=get_aws_available_regions(),
-        )
-        # AWS Organizations
-        aws_orgs_subparser = aws_parser.add_argument_group("AWS Organizations")
-        aws_orgs_subparser.add_argument(
-            "-O",
-            "--organizations-role",
-            nargs="?",
-            help="Specify AWS Organizations management role ARN to be assumed, to get Organization metadata",
-        )
-        # AWS Security Hub
-        aws_security_hub_subparser = aws_parser.add_argument_group("AWS Security Hub")
-        aws_security_hub_subparser.add_argument(
-            "-S",
-            "--security-hub",
-            action="store_true",
-            help="Send check output to AWS Security Hub",
-        )
-        aws_security_hub_subparser.add_argument(
-            "--skip-sh-update",
-            action="store_true",
-            help="Skip updating previous findings of Prowler in Security Hub",
-        )
-        # AWS Quick Inventory
-        aws_quick_inventory_subparser = aws_parser.add_argument_group("Quick Inventory")
-        aws_quick_inventory_subparser.add_argument(
-            "-i",
-            "--quick-inventory",
-            action="store_true",
-            help="Run Prowler Quick Inventory. The inventory will be stored in an output csv by default",
-        )
-        # AWS Outputs
-        aws_outputs_subparser = aws_parser.add_argument_group("AWS Outputs to S3")
-        aws_outputs_bucket_parser = aws_outputs_subparser.add_mutually_exclusive_group()
-        aws_outputs_bucket_parser.add_argument(
-            "-B",
-            "--output-bucket",
-            nargs="?",
-            default=None,
-            help="Custom output bucket, requires -M <mode> and it can work also with -o flag.",
-        )
-        aws_outputs_bucket_parser.add_argument(
-            "-D",
-            "--output-bucket-no-assume",
-            nargs="?",
-            default=None,
-            help="Same as -B but do not use the assumed role credentials to put objects to the bucket, instead uses the initial credentials.",
-        )
-        aws_3rd_party_subparser = aws_parser.add_argument_group(
+
+    def __init_third_party_integrations_parser__(self):
+        third_party_subparser = self.common_providers_parser.add_argument_group(
             "3rd Party Integrations"
         )
-        aws_3rd_party_subparser.add_argument(
-            "-N",
+        third_party_subparser.add_argument(
             "--shodan",
+            "-N",
             nargs="?",
             default=None,
-            help="Shodan API key used by check ec2_elastic_ip_shodan.",
+            metavar="SHODAN_API_KEY",
+            help="Check if any public IPs in your Cloud environments are exposed in Shodan.",
         )
-        # Allowlist
-        allowlist_subparser = aws_parser.add_argument_group("Allowlist")
-        allowlist_subparser.add_argument(
-            "-w",
-            "--allowlist-file",
-            nargs="?",
-            default=None,
-            help="Path for allowlist yaml file. See example prowler/config/allowlist.yaml for reference and format. It also accepts AWS DynamoDB Table or Lambda ARNs or S3 URIs, see more in https://docs.prowler.cloud/en/latest/tutorials/allowlist/",
-        )
-        # Based Scans
-        aws_based_scans_subparser = aws_parser.add_argument_group("AWS Based Scans")
-        aws_based_scans_parser = (
-            aws_based_scans_subparser.add_mutually_exclusive_group()
-        )
-        aws_based_scans_parser.add_argument(
-            "--resource-tags",
-            nargs="+",
-            default=None,
-            help="Scan only resources with specific AWS Tags (Key=Value), e.g., Environment=dev Project=prowler",
-        )
-        aws_based_scans_parser.add_argument(
-            "--resource-arn",
-            nargs="+",
-            type=arn_type,
-            default=None,
-            help="Scan only resources with specific AWS Resource ARNs, e.g., arn:aws:iam::012345678910:user/test arn:aws:ec2:us-east-1:123456789012:vpc/vpc-12345678",
-        )
-
-        # Boto3 Config
-        boto3_config_subparser = aws_parser.add_argument_group("Boto3 Config")
-        boto3_config_subparser.add_argument(
-            "--aws-retries-max-attempts",
-            nargs="?",
-            default=None,
-            type=int,
-            help="Set the maximum attemps for the Boto3 standard retrier config (Default: 3)",
-        )
-
-    def __init_azure_parser__(self):
-        """Init the Azure Provider CLI parser"""
-        azure_parser = self.subparsers.add_parser(
-            "azure", parents=[self.common_providers_parser], help="Azure Provider"
-        )
-        # Authentication Modes
-        azure_auth_subparser = azure_parser.add_argument_group("Authentication Modes")
-        azure_auth_modes_group = azure_auth_subparser.add_mutually_exclusive_group()
-        azure_auth_modes_group.add_argument(
-            "--az-cli-auth",
+        third_party_subparser.add_argument(
+            "--slack",
             action="store_true",
-            help="Use Azure cli credentials to log in against azure",
-        )
-        azure_auth_modes_group.add_argument(
-            "--sp-env-auth",
-            action="store_true",
-            help="Use service principal env variables authentication to log in against azure",
-        )
-        azure_auth_modes_group.add_argument(
-            "--browser-auth",
-            action="store_true",
-            help="Use browser authentication to log in against azure ",
-        )
-        azure_auth_modes_group.add_argument(
-            "--managed-identity-auth",
-            action="store_true",
-            help="Use managed identity authentication to log in against azure ",
-        )
-        # Subscriptions
-        azure_subscriptions_subparser = azure_parser.add_argument_group("Subscriptions")
-        azure_subscriptions_subparser.add_argument(
-            "--subscription-ids",
-            nargs="+",
-            default=[],
-            help="Azure subscription ids to be scanned by prowler",
+            help="Send a summary of the execution with a Slack APP in your channel. Environment variables SLACK_API_TOKEN and SLACK_CHANNEL_NAME are required (see more in https://docs.prowler.cloud/en/latest/tutorials/integrations/#slack).",
         )

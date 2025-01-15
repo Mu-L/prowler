@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.codebuild.codebuild_service import Codebuild
+from prowler.providers.common.provider import Provider
 
-codebuild_client = Codebuild(current_audit_info)
+codebuild_client = Codebuild(Provider.get_global_provider())

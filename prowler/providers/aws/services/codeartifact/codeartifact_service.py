@@ -1,41 +1,26 @@
-import threading
 from enum import Enum
 from typing import Optional
 
+from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## CodeArtifact
-class CodeArtifact:
-    def __init__(self, audit_info):
-        self.service = "codeartifact"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class CodeArtifact(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         # repositories is a dictionary containing all the codeartifact service information
         self.repositories = {}
-        self.__threading_call__(self.__list_repositories__)
-        self.__threading_call__(self.__list_packages__)
-        self.__list_tags_for_resource__()
+        self.__threading_call__(self._list_repositories)
+        self.__threading_call__(self._list_packages)
+        self._list_tags_for_resource()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_repositories__(self, regional_client):
+    def _list_repositories(self, regional_client):
         logger.info("CodeArtifact - Listing Repositories...")
         try:
             list_repositories_paginator = regional_client.get_paginator(
@@ -51,7 +36,8 @@ class CodeArtifact:
                         package_domain_owner = repository["domainOwner"]
                         package_arn = repository["arn"]
                         # Save Repository
-                        self.repositories[package_name] = Repository(
+                        # We must use the Package ARN as the dict key to have unique keys
+                        self.repositories[package_arn] = Repository(
                             name=package_name,
                             arn=package_arn,
                             domain_name=package_domain_name,
@@ -66,10 +52,10 @@ class CodeArtifact:
                 f" {error}"
             )
 
-    def __list_packages__(self, regional_client):
+    def _list_packages(self, regional_client):
         logger.info("CodeArtifact - Listing Packages and retrieving information...")
-        try:
-            for repository in self.repositories:
+        for repository in self.repositories:
+            try:
                 if self.repositories[repository].region == regional_client.region:
                     list_packages_paginator = regional_client.get_paginator(
                         "list_packages"
@@ -77,7 +63,7 @@ class CodeArtifact:
                     list_packages_parameters = {
                         "domain": self.repositories[repository].domain_name,
                         "domainOwner": self.repositories[repository].domain_owner,
-                        "repository": repository,
+                        "repository": self.repositories[repository].name,
                     }
                     packages = []
                     for page in list_packages_paginator.paginate(
@@ -97,27 +83,52 @@ class CodeArtifact:
                                 ]
                             )
                             # Get Latest Package Version
-                            latest_version_information = (
-                                regional_client.list_package_versions(
-                                    domain=self.repositories[repository].domain_name,
-                                    domainOwner=self.repositories[
-                                        repository
-                                    ].domain_owner,
-                                    repository=repository,
-                                    format=package_format,
-                                    package=package_name,
-                                    sortBy="PUBLISHED_TIME",
+                            if package_namespace:
+                                latest_version_information = (
+                                    regional_client.list_package_versions(
+                                        domain=self.repositories[
+                                            repository
+                                        ].domain_name,
+                                        domainOwner=self.repositories[
+                                            repository
+                                        ].domain_owner,
+                                        repository=self.repositories[repository].name,
+                                        format=package_format,
+                                        namespace=package_namespace,
+                                        package=package_name,
+                                        sortBy="PUBLISHED_TIME",
+                                    )
                                 )
-                            )
-                            latest_version = latest_version_information["versions"][0][
-                                "version"
-                            ]
-                            latest_origin_type = latest_version_information["versions"][
-                                0
-                            ]["origin"]["originType"]
-                            latest_status = latest_version_information["versions"][0][
-                                "status"
-                            ]
+                            else:
+                                latest_version_information = (
+                                    regional_client.list_package_versions(
+                                        domain=self.repositories[
+                                            repository
+                                        ].domain_name,
+                                        domainOwner=self.repositories[
+                                            repository
+                                        ].domain_owner,
+                                        repository=self.repositories[repository].name,
+                                        format=package_format,
+                                        package=package_name,
+                                        sortBy="PUBLISHED_TIME",
+                                    )
+                                )
+                            latest_version = ""
+                            latest_origin_type = "UNKNOWN"
+                            latest_status = "Published"
+                            if latest_version_information.get("versions"):
+                                latest_version = latest_version_information["versions"][
+                                    0
+                                ].get("version")
+                                latest_origin_type = (
+                                    latest_version_information["versions"][0]
+                                    .get("origin", {})
+                                    .get("originType", "UNKNOWN")
+                                )
+                                latest_status = latest_version_information["versions"][
+                                    0
+                                ].get("status", "Published")
 
                             packages.append(
                                 Package(
@@ -142,14 +153,23 @@ class CodeArtifact:
                     # Save all the packages information
                     self.repositories[repository].packages = packages
 
-        except Exception as error:
-            logger.error(
-                f"{regional_client.region} --"
-                f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
-                f" {error}"
-            )
+            except ClientError as error:
+                if error.response["Error"]["Code"] == "ResourceNotFoundException":
+                    logger.warning(
+                        f"{regional_client.region} --"
+                        f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
+                        f" {error}"
+                    )
+                    continue
 
-    def __list_tags_for_resource__(self):
+            except Exception as error:
+                logger.error(
+                    f"{regional_client.region} --"
+                    f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
+                    f" {error}"
+                )
+
+    def _list_tags_for_resource(self):
         logger.info("CodeArtifact - List Tags...")
         try:
             for repository in self.repositories.values():
@@ -205,7 +225,7 @@ class OriginInformation(BaseModel):
 
 
 class LatestPackageVersionStatus(Enum):
-    """Possibel values for the package status"""
+    """Possible values for the package status"""
 
     Published = "Published"
     Unfinished = "Unfinished"

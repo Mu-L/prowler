@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.sagemaker.sagemaker_service import SageMaker
+from prowler.providers.common.provider import Provider
 
-sagemaker_client = SageMaker(current_audit_info)
+sagemaker_client = SageMaker(Provider.get_global_provider())

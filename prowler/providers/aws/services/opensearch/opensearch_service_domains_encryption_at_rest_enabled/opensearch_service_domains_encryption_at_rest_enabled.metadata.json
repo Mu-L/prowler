@@ -11,14 +11,14 @@
   "SubServiceName": "",
   "ResourceIdTemplate": "arn:partition:service:region:account-id:resource-id",
   "Severity": "medium",
-  "ResourceType": "AwsOpenSearchDomain",
+  "ResourceType": "AwsOpenSearchServiceDomain",
   "Description": "Check if Amazon Elasticsearch/Opensearch Service domains have encryption at-rest enabled",
   "Risk": "If not enable unauthorized access to your data could risk increases.",
   "RelatedUrl": "",
   "Remediation": {
     "Code": {
       "CLI": "https://www.trendmicro.com/cloudoneconformity/knowledge-base/aws/Elasticsearch/encryption-at-rest.html",
-      "NativeIaC": "https://docs.bridgecrew.io/docs/elasticsearch_3-enable-encryptionatrest#fix---builtime",
+      "NativeIaC": "https://docs.prowler.com/checks/aws/elasticsearch-policies/elasticsearch_3-enable-encryptionatrest#fix---builtime",
       "Other": "https://www.trendmicro.com/cloudoneconformity/knowledge-base/aws/Elasticsearch/encryption-at-rest.html",
       "Terraform": ""
     },

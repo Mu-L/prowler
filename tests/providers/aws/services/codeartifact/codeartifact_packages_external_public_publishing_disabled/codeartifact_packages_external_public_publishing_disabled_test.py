@@ -1,7 +1,5 @@
 from unittest import mock
 
-from moto.core import DEFAULT_ACCOUNT_ID
-
 from prowler.providers.aws.services.codeartifact.codeartifact_service import (
     LatestPackageVersion,
     LatestPackageVersionStatus,
@@ -13,6 +11,7 @@ from prowler.providers.aws.services.codeartifact.codeartifact_service import (
     Restrictions,
     RestrictionValues,
 )
+from tests.providers.aws.utils import AWS_ACCOUNT_NUMBER
 
 AWS_REGION = "eu-west-1"
 
@@ -23,6 +22,9 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
         codeartifact_client.repositories = {}
         with mock.patch(
             "prowler.providers.aws.services.codeartifact.codeartifact_service.CodeArtifact",
+            new=codeartifact_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.codeartifact.codeartifact_client.codeartifact_client",
             new=codeartifact_client,
         ):
             # Test Check
@@ -50,6 +52,9 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
         with mock.patch(
             "prowler.providers.aws.services.codeartifact.codeartifact_service.CodeArtifact",
             new=codeartifact_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.codeartifact.codeartifact_client.codeartifact_client",
+            new=codeartifact_client,
         ):
             # Test Check
             from prowler.providers.aws.services.codeartifact.codeartifact_packages_external_public_publishing_disabled.codeartifact_packages_external_public_publishing_disabled import (
@@ -65,12 +70,12 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
         codeartifact_client = mock.MagicMock
         package_name = "test-package"
         package_namespace = "test-namespace"
-        repository_arn = f"arn:aws:codebuild:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:repository/test-repository"
+        repository_arn = f"arn:aws:codebuild:{AWS_REGION}:{AWS_ACCOUNT_NUMBER}:repository/test-repository"
         codeartifact_client.repositories = {
             "test-repository": Repository(
                 name="test-repository",
                 arn=repository_arn,
-                domain_name="",
+                domain_name="test",
                 domain_owner="",
                 region=AWS_REGION,
                 packages=[
@@ -98,6 +103,9 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
         with mock.patch(
             "prowler.providers.aws.services.codeartifact.codeartifact_service.CodeArtifact",
             new=codeartifact_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.codeartifact.codeartifact_client.codeartifact_client",
+            new=codeartifact_client,
         ):
             # Test Check
             from prowler.providers.aws.services.codeartifact.codeartifact_packages_external_public_publishing_disabled.codeartifact_packages_external_public_publishing_disabled import (
@@ -109,23 +117,28 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
 
             assert len(result) == 1
             assert result[0].region == AWS_REGION
-            assert result[0].resource_id == "test-package"
+            assert result[0].resource_id == "test/test-package"
+            assert (
+                result[0].resource_arn
+                == repository_arn + "/" + package_namespace + ":" + package_name
+            )
+            assert result[0].resource_tags == []
             assert result[0].status == "FAIL"
             assert (
                 result[0].status_extended
-                == f"Internal package {package_name} is vulnerable to dependency confusion in repository {repository_arn}"
+                == f"Internal package {package_name} is vulnerable to dependency confusion in repository test."
             )
 
     def test_repository_package_private_publishing_origin_internal(self):
         codeartifact_client = mock.MagicMock
         package_name = "test-package"
         package_namespace = "test-namespace"
-        repository_arn = f"arn:aws:codebuild:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:repository/test-repository"
+        repository_arn = f"arn:aws:codebuild:{AWS_REGION}:{AWS_ACCOUNT_NUMBER}:repository/test-repository"
         codeartifact_client.repositories = {
             "test-repository": Repository(
                 name="test-repository",
                 arn=repository_arn,
-                domain_name="",
+                domain_name="test",
                 domain_owner="",
                 region=AWS_REGION,
                 packages=[
@@ -153,6 +166,9 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
         with mock.patch(
             "prowler.providers.aws.services.codeartifact.codeartifact_service.CodeArtifact",
             new=codeartifact_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.codeartifact.codeartifact_client.codeartifact_client",
+            new=codeartifact_client,
         ):
             # Test Check
             from prowler.providers.aws.services.codeartifact.codeartifact_packages_external_public_publishing_disabled.codeartifact_packages_external_public_publishing_disabled import (
@@ -164,9 +180,14 @@ class Test_codeartifact_packages_external_public_publishing_disabled:
 
             assert len(result) == 1
             assert result[0].region == AWS_REGION
-            assert result[0].resource_id == "test-package"
+            assert result[0].resource_id == "test/test-package"
+            assert (
+                result[0].resource_arn
+                == repository_arn + "/" + package_namespace + ":" + package_name
+            )
+            assert result[0].resource_tags == []
             assert result[0].status == "PASS"
             assert (
                 result[0].status_extended
-                == f"Internal package {package_name} is not vulnerable to dependency confusion in repository {repository_arn}"
+                == f"Internal package {package_name} is not vulnerable to dependency confusion in repository test."
             )

@@ -14,12 +14,13 @@
           "Categoria": "control de acceso",
           "DescripcionControl": "Es muy recomendable la utilización de un proveedor de identidades que permita administrar las identidades en un lugar centralizado, en vez de utilizar IAM para ello.",
           "Nivel": "alto",
-          "Tipo": "recomendacion",
+          "Tipo": "requisito",
           "Dimensiones": [
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -43,7 +44,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -67,11 +69,37 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "iam_support_role_created"
+      ]
+    },
+    {
+      "Id": "op.acc.3.r2.aws.iam.1",
+      "Description": "Privilegios de auditoría",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.acc.3.r2",
+          "Marco": "operacional",
+          "Categoria": "control de acceso",
+          "DescripcionControl": "Disponer de cuentas con privilegios de auditoría estrictamente controladas y personalizadas.",
+          "Nivel": "opcional",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "iam_securityaudit_role_created"
       ]
     },
     {
@@ -91,7 +119,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -103,7 +132,11 @@
         "awslambda_function_url_public",
         "awslambda_function_url_cors_policy",
         "iam_policy_allows_privilege_escalation",
-        "iam_policy_no_administrative_privileges"
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
+        "organizations_scp_check_deny_regions",
+        "organizations_account_part_of_organizations"
       ]
     },
     {
@@ -123,13 +156,16 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "iam_policy_allows_privilege_escalation",
         "iam_no_custom_policy_permissive_role_assumption",
-        "iam_policy_no_administrative_privileges"
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges"
       ]
     },
     {
@@ -149,7 +185,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -173,12 +210,39 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "iam_no_root_access_key",
         "iam_avoid_root_usage"
+      ]
+    },
+    {
+      "Id": "op.acc.4.aws.iam.8",
+      "Description": "Proceso de gestión de derechos de acceso",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.acc.4",
+          "Marco": "operacional",
+          "Categoria": "control de acceso",
+          "DescripcionControl": "Se restringirá todo acceso a las acciones especificadas para el usuario root de una cuenta.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "organizations_account_part_of_organizations",
+        "organizations_scp_check_deny_regions"
       ]
     },
     {
@@ -198,11 +262,14 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
-        "iam_policy_no_administrative_privileges"
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges"
       ]
     },
     {
@@ -222,7 +289,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -246,7 +314,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -270,11 +339,13 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
-        "iam_disable_90_days_credentials",
+        "iam_user_accesskey_unused",
+        "iam_user_console_access_unused",
         "iam_rotate_access_key_90_days"
       ]
     },
@@ -295,12 +366,14 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "iam_password_policy_expires_passwords_within_90_days_or_less",
-        "iam_disable_90_days_credentials",
+        "iam_user_accesskey_unused",
+        "iam_user_console_access_unused",
         "iam_rotate_access_key_90_days"
       ]
     },
@@ -321,7 +394,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -345,7 +419,11 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": [
+            "op.acc.6.r2",
+            "op.acc.6.r4"
+          ]
         }
       ],
       "Checks": [
@@ -374,7 +452,11 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": [
+            "op.acc.6.r1",
+            "op.acc.6.r4"
+          ]
         }
       ],
       "Checks": [
@@ -400,7 +482,11 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": [
+            "op.acc.6.r1",
+            "op.acc.6.r3"
+          ]
         }
       ],
       "Checks": [
@@ -425,7 +511,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -449,12 +536,13 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
-        "iam_disable_30_days_credentials",
-        "iam_disable_90_days_credentials"
+        "iam_user_accesskey_unused",
+        "iam_user_console_access_unused"
       ]
     },
     {
@@ -474,7 +562,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -499,7 +588,34 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "config_recorder_all_regions_enabled"
+      ]
+    },
+    {
+      "Id": "op.exp.1.aws.cfg.2",
+      "Description": "Inventario de activos",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.1",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Configurar una regla de Config Rules que alerte sobre el despliegue de recursos sin las etiquetas correspondientes asociadas.",
+          "Nivel": "bajo",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -524,12 +640,91 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "ec2_instance_managed_by_ssm",
         "ssm_managed_compliant_patching"
+      ]
+    },
+    {
+      "Id": "op.exp.1.aws.sys.2",
+      "Description": "Inventario de activos",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.1",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Asignar metadatos personalizados a cada nodo administrado con información sobre el responsable del activo.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "organizations_tags_policies_enabled_and_attached"
+      ]
+    },
+    {
+      "Id": "op.exp.1.aws.re.1",
+      "Description": "Inventario de activos",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.1",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Se recomienda el uso de AWS Resource Explorer para la exploración de los recursos como instancias RDB, buckets S3o tablas de Amazon DynamoDB.",
+          "Nivel": "alto",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "resourceexplorer2_indexes_found"
+      ]
+    },
+    {
+      "Id": "op.exp.1.aws.tag.1",
+      "Description": "Inventario de activos",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.1",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Para la correcta identificación del responsable, asociar etiquetas para todos los activos.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "organizations_tags_policies_enabled_and_attached"
       ]
     },
     {
@@ -550,7 +745,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -567,7 +763,7 @@
           "Categoria": "explotación",
           "DescripcionControl": "La entidad usuaria puede consultar el histórico de configuraciones de recursos en AWS Config.",
           "Nivel": "alto",
-          "Tipo": "recomendacion",
+          "Tipo": "refuerzo",
           "Dimensiones": [
             "confidencialidad",
             "integridad",
@@ -575,7 +771,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -600,7 +797,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -626,11 +824,39 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "ec2_instance_managed_by_ssm"
+      ]
+    },
+    {
+      "Id": "op.exp.4.r4.aws.insp.1",
+      "Description": "Monitorización continua",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.4.r4",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Desplegar a nivel de sistema una estrategia de monitorización continua de amenazas y vulnerabilidades detallando: indicadores críticos de seguridad, política de aplicación de parches y criterios de revisión regular y excepcional de amenazas del sistema.",
+          "Nivel": "opcional",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "inspector2_is_enabled",
+        "inspector2_active_findings_exist"
       ]
     },
     {
@@ -651,7 +877,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -676,7 +903,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -701,7 +929,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -727,7 +956,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -752,7 +982,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -777,7 +1008,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -796,11 +1028,12 @@
           "Categoria": "explotación",
           "DescripcionControl": "Habilitar la herramienta CloudTrail en todas las regiones. Este serviio está habilitado por defecto cuando se crea una nueva cuenta, pero es posible deshabilitarlo.",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "requisito",
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -817,11 +1050,12 @@
           "Categoria": "explotación",
           "DescripcionControl": "Establecer un filtro de métricas desde AWS CloudWatch para detectar cambios en las configuraciones de CloudTrail",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "requisito",
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -838,11 +1072,12 @@
           "Categoria": "explotación",
           "DescripcionControl": "Habilitar la validación de archivos en todos los trails, evitando así que estos se vean modificados o eliminados.",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "requisito",
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -859,11 +1094,12 @@
           "Categoria": "explotación",
           "DescripcionControl": "Habilitar la entrega continua de eventos de CloudTrail a un bucket S3 dedicado con el fin de unificar los archivos de registro.",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "requisito",
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -881,11 +1117,12 @@
           "Categoria": "explotación",
           "DescripcionControl": "Se deberán habilitar alertas para los siguientes eventos: * Llamadas no permitidas a la API, * Accesos no permitidos a la consola, * Todos los intentos de acceso sin el correcto uso de MFA, * Toda la actividad realizada sobre y por la cuenta root, * Cualquier cambio en las políticas IAM",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "recomendacion",
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -910,7 +1147,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -927,11 +1165,12 @@
           "Categoria": "explotación",
           "DescripcionControl": "Crear alertas utilizando herramientas como Amazon CloudWatch Events para anunciar el inicio de sesión y el uso de las credenciales de usuario root de la cuenta de administración",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "requisito",
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -952,13 +1191,40 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "cloudwatch_log_metric_filter_and_alarm_for_cloudtrail_configuration_changes_enabled",
         "cloudtrail_s3_dataevents_write_enabled",
-        "cloudtrail_s3_dataevents_read_enabled"
+        "cloudtrail_s3_dataevents_read_enabled",
+        "cloudtrail_insights_exist"
+      ]
+    },
+    {
+      "Id": "op.exp.8.r1.aws.ct.3",
+      "Description": "Revisión de los registros",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.8.r1",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Registrar los eventos de lectura y escritura de datos.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "trazabilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "cloudwatch_log_metric_filter_and_alarm_for_cloudtrail_configuration_changes_enabled",
+        "cloudtrail_s3_dataevents_write_enabled",
+        "cloudtrail_s3_dataevents_read_enabled",
+        "cloudtrail_insights_exist"
       ]
     },
     {
@@ -975,7 +1241,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -997,7 +1264,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1018,7 +1286,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1039,7 +1308,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1060,15 +1330,46 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "iam_policy_allows_privilege_escalation",
-        "iam_policy_no_administrative_privileges",
+        "iam_aws_attached_policy_no_administrative_privileges",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_inline_policy_no_administrative_privileges",
         "iam_no_custom_policy_permissive_role_assumption",
         "iam_policy_attached_only_to_group_or_roles",
         "iam_role_cross_service_confused_deputy_prevention"
+      ]
+    },
+    {
+      "Id": "op.exp.8.r4.aws.ct.1",
+      "Description": "Control de acceso",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.8.r4",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Asignar correctamente las políticas AWS IAM para el acceso y borrado de los registros y sus copias de seguridad haciendo uso del principio de mínimo privilegio.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "trazabilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "iam_policy_allows_privilege_escalation",
+        "iam_customer_attached_policy_no_administrative_privileges",
+        "iam_customer_unattached_policy_no_administrative_privileges",
+        "iam_no_custom_policy_permissive_role_assumption",
+        "iam_policy_attached_only_to_group_or_roles",
+        "iam_role_cross_service_confused_deputy_prevention",
+        "iam_policy_no_full_access_to_cloudtrail"
       ]
     },
     {
@@ -1085,13 +1386,36 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "s3_bucket_public_access",
         "cloudtrail_logs_s3_bucket_is_not_publicly_accessible",
         "s3_bucket_policy_public_write_access"
+      ]
+    },
+    {
+      "Id": "op.exp.8.r4.aws.ct.3",
+      "Description": "Control de acceso",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.8.r4",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Activar el acceso por MFA al registro de actividad almacenado en los buckets de Amazon S3 dedicados para AWS CloudTrail.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "trazabilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "cloudtrail_bucket_requires_mfa_delete"
       ]
     },
     {
@@ -1108,7 +1432,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1129,7 +1454,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1150,7 +1476,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1171,7 +1498,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1196,11 +1524,117 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "cloudtrail_multi_region_enabled"
+      ]
+    },
+    {
+      "Id": "op.exp.9.aws.img.1",
+      "Description": "Registro de la gestión de incidentes",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.9",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Habilitar AWS Incident Manager y AWS CloudTrail en todas las regiones con el fin de recopilar información para generar contenido prescriptivo para la creación de informes exigidos por la medida de seguridad.",
+          "Nivel": "alto",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "ec2_instance_managed_by_ssm",
+        "ssmincidents_enabled_with_plans"
+      ]
+    },
+    {
+      "Id": "op.exp.10.aws.tag.1",
+      "Description": "Protección de claves criptográficas",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.10",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Se recomienda utilizar tags y alias para una mejor gestión y administración de las claves.",
+          "Nivel": "alto",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "organizations_tags_policies_enabled_and_attached"
+      ]
+    },
+    {
+      "Id": "op.exp.10.aws.cmk.1",
+      "Description": "Protección de claves criptográficas",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.10",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Los usuarios o roles con privilegios para la creación de claves deben ser diferentes a los que van a utilizar las claves para operaciones de cifrado.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "iam_policy_no_full_access_to_kms"
+      ]
+    },
+    {
+      "Id": "op.exp.10.aws.cmk.2",
+      "Description": "Protección de claves criptográficas",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.exp.10",
+          "Marco": "operacional",
+          "Categoria": "explotación",
+          "DescripcionControl": "Utilizar claves gestionadas por los clientes (CMK).",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "iam_policy_no_full_access_to_kms"
       ]
     },
     {
@@ -1221,7 +1655,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1246,7 +1681,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1271,7 +1707,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1296,7 +1733,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1321,7 +1759,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1346,7 +1785,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1363,7 +1803,7 @@
           "Categoria": "monitorización del sistema",
           "DescripcionControl": "Deberá habilitarse Amazon GuardDuty para todas las regiones tanto en la cuenta raíz como en las cuentas miembro de un entorno multi-cuenta.",
           "Nivel": "alto",
-          "Tipo": "medida",
+          "Tipo": "requisito",
           "Dimensiones": [
             "confidencialidad",
             "integridad",
@@ -1371,11 +1811,38 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "guardduty_is_enabled"
+      ]
+    },
+    {
+      "Id": "op.mon.1.aws.gd.3",
+      "Description": "Detección de intrusión",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.mon.1",
+          "Marco": "operacional",
+          "Categoria": "monitorización del sistema",
+          "DescripcionControl": "Todas las cuentas miembro deberán estar añadidas para la supervisión bajo la cuenta raíz.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "guardduty_centrally_managed"
       ]
     },
     {
@@ -1388,7 +1855,7 @@
           "Categoria": "monitorización del sistema",
           "DescripcionControl": "Utilizar Security Hub para obtener una vista consolidada de los hallazgos de seguridad en los servicios de AWS habilitados.",
           "Nivel": "alto",
-          "Tipo": "recomendacion",
+          "Tipo": "requisito",
           "Dimensiones": [
             "confidencialidad",
             "integridad",
@@ -1396,7 +1863,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1404,7 +1872,7 @@
       ]
     },
     {
-      "Id": "op.mon.3.aws.cwl.2",
+      "Id": "op.mon.3.aws.cwl.1",
       "Description": "Vigilancia",
       "Attributes": [
         {
@@ -1421,7 +1889,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1446,7 +1915,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1471,7 +1941,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1496,7 +1967,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1521,11 +1993,39 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "securityhub_enabled"
+      ]
+    },
+    {
+      "Id": "op.mon.3.r2.aws.insp.1",
+      "Description": "Análisis dinámico",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.mon.3.r2",
+          "Marco": "operacional",
+          "Categoria": "monitorización del sistema",
+          "DescripcionControl": "Utilizar la herramienta Inspector para la detección de posibles vulneerabilidades de las instancias EC2, las funciones Lambda y las imágenes de contenedor.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "inspector2_is_enabled",
+        "inspector2_active_findings_exist"
       ]
     },
     {
@@ -1546,7 +2046,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1571,11 +2072,39 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "config_recorder_all_regions_enabled"
+      ]
+    },
+    {
+      "Id": "op.mon.3.r6.aws.insp.1",
+      "Description": "Inspecciones de seguridad",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.mon.3.r6",
+          "Marco": "operacional",
+          "Categoria": "monitorización del sistema",
+          "DescripcionControl": "Utilizar Config Rules y AWS Inspector.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "inspector2_is_enabled",
+        "inspector2_active_findings_exist"
       ]
     },
     {
@@ -1596,7 +2125,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1622,11 +2152,12 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
-        "ec2_securitygroup_in_use_without_ingress_filtering"
+        "ec2_securitygroup_allow_ingress_from_internet_to_all_ports"
       ]
     },
     {
@@ -1647,7 +2178,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1672,7 +2204,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1697,11 +2230,64 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "elb_insecure_ssl_ciphers"
+      ]
+    },
+    {
+      "Id": "mp.com.1.aws.nfw.1",
+      "Description": "Perímetro seguro",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.com.1",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de las comunicaciones",
+          "DescripcionControl": "Filtrar todo el tráfico entrante y saliente de la VPC a través de Firewalls de red.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "networkfirewall_in_all_vpc"
+      ]
+    },
+    {
+      "Id": "mp.com.1.aws.nfw.2",
+      "Description": "Perímetro seguro",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.com.1",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de las comunicaciones",
+          "DescripcionControl": "Incidir en la utilización de AWS Firewall Manager para gestionar los firewalls de forma centralizada.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "fms_policy_compliant"
       ]
     },
     {
@@ -1722,7 +2308,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1747,7 +2334,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1769,7 +2357,8 @@
             "integridad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1791,7 +2380,8 @@
             "integridad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1813,7 +2403,8 @@
             "integridad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1835,11 +2426,64 @@
             "integridad",
             "autenticidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "cloudfront_distributions_https_enabled"
+      ]
+    },
+    {
+      "Id": "mp.com.4.aws.ws.1",
+      "Description": "Separación de flujos de información en la red",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.com.4",
+          "Marco": "medidas de protección",
+          "Categoria": "segregación de redes",
+          "DescripcionControl": "Se deberán abrir solo los puertos necesarios para el uso del servicio AWS WorkSpaces.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "workspaces_vpc_2private_1public_subnets_nat"
+      ]
+    },
+    {
+      "Id": "mp.com.4.aws.vpc.1",
+      "Description": "Separación de flujos de información en la red",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.com.4",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de las comunicaciones",
+          "DescripcionControl": "Los flujos de información de red se deben separar a través de la utilización de diferentes subnets.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "vpc_subnet_separate_private_public"
       ]
     },
     {
@@ -1860,11 +2504,39 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
         "ec2_instance_internet_facing_with_instance_profile"
+      ]
+    },
+    {
+      "Id": "mp.com.4.r1.aws.vpc.1",
+      "Description": "Segmentación lógica avanzada",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.com.4.r1",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de las comunicaciones",
+          "DescripcionControl": "Implementar la segmentación a través de la utilización de diferentes VPCs.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad",
+            "trazabilidad",
+            "autenticidad",
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "vpc_subnet_separate_private_public",
+        "vpc_different_regions"
       ]
     },
     {
@@ -1885,11 +2557,40 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": [
+            "mp.com.4.r3"
+          ]
         }
       ],
       "Checks": [
         "vpc_peering_routing_tables_with_least_privilege"
+      ]
+    },
+    {
+      "Id": "mp.com.4.r3.aws.vpc.1",
+      "Description": "Segmentación física",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.com.4.r3",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de las comunicaciones",
+          "DescripcionControl": "Implementar la segmentación a través de diferentes VPCs situadas en diferentes ubicaciones.",
+          "Nivel": "alto",
+          "Tipo": "refuerzo",
+          "Dimensiones": [
+            "confidencialidad",
+            "integridad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": [
+            "mp.com.4.r2"
+          ]
+        }
+      ],
+      "Checks": [
+        "vpc_subnet_different_az",
+        "vpc_different_regions"
       ]
     },
     {
@@ -1907,7 +2608,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1929,7 +2631,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1951,7 +2654,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1973,7 +2677,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -1995,7 +2700,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2017,7 +2723,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2039,7 +2746,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2061,7 +2769,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2086,7 +2795,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2112,7 +2822,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2137,11 +2848,12 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
-        "apigateway_waf_acl_attached"
+        "apigateway_restapi_waf_acl_attached"
       ]
     },
     {
@@ -2162,7 +2874,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "automático"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2183,7 +2896,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "automáticoop.pl.2.aws.warch.1"
+          "ModoEjecucion": "automático",
+          "Dependencias": []
         }
       ],
       "Checks": [
@@ -2193,6 +2907,28 @@
         "shield_advanced_protection_in_global_accelerators",
         "shield_advanced_protection_in_internet_facing_load_balancers",
         "shield_advanced_protection_in_route53_hosted_zones"
+      ]
+    },
+    {
+      "Id": "mp.s.4.aws.as.1",
+      "Description": "Protección frente a la denegación de servicio ",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.s.4",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de los servicios",
+          "DescripcionControl": "Activar la solución AWS Auto Scaling para dotar a los sistemas de la capacidad suficiente para atender la carga prevista con holgura y desplegar tecnologías para la prevención de ataques conocidos.",
+          "Nivel": "alto",
+          "Tipo": "requisito",
+          "Dimensiones": [
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "autoscaling_group_multiple_az"
       ]
     },
     {
@@ -2213,7 +2949,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2236,7 +2973,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2259,7 +2997,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2278,7 +3017,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2297,7 +3037,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2316,7 +3057,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2335,7 +3077,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2354,7 +3097,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2373,7 +3117,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2392,7 +3137,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2411,7 +3157,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2431,7 +3178,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2451,7 +3199,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2471,7 +3220,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2491,7 +3241,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2511,7 +3262,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2531,7 +3283,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2551,7 +3304,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2573,7 +3327,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2595,7 +3350,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2617,7 +3373,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2639,7 +3396,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2661,7 +3419,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2683,7 +3442,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2705,7 +3465,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2727,7 +3488,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2749,7 +3511,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2771,7 +3534,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2793,7 +3557,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2815,7 +3580,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2837,7 +3603,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2859,7 +3626,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2881,10 +3649,13 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "automatico",
+          "Dependencias": []
         }
       ],
-      "Checks": []
+      "Checks": [
+        "ec2_instance_managed_by_ssm"
+      ]
     },
     {
       "Id": "op.acc.4.aws.iam.4",
@@ -2903,7 +3674,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2925,7 +3697,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2947,7 +3720,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2969,7 +3743,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -2991,7 +3766,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3013,7 +3789,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3035,7 +3812,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3057,7 +3835,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3079,7 +3858,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3101,7 +3881,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3123,7 +3904,8 @@
             "trazabilidad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3146,7 +3928,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3169,7 +3952,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3192,7 +3976,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3215,7 +4000,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3238,7 +4024,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3261,7 +4048,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3284,7 +4072,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3307,7 +4096,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3330,7 +4120,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3349,7 +4140,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3368,7 +4160,8 @@
           "Dimensiones": [
             "trazabilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3391,7 +4184,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3414,7 +4208,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3437,7 +4232,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3456,10 +4252,33 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
+    },
+    {
+      "Id": "op.cont.3.aws.drs.1",
+      "Description": "Pruebas periódicas",
+      "Attributes": [
+        {
+          "IdGrupoControl": "op.cont.3",
+          "Marco": "operacional",
+          "Categoria": "continuidad del servicio",
+          "DescripcionControl": "La organización puede hacer uso del servicio AWS Elastic Disaster Recovery, programando y ejecutando pruebas no disruptivas (simulacros que no afectan ni al servidor de origen ni a la replicación de datos en curso) que prueben el correcto funcionamiento de las recuperaciones del plan de continuidad.",
+          "Nivel": "alto",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "drs_job_exist"
+      ]
     },
     {
       "Id": "op.mon.1.aws.gd.4",
@@ -3479,7 +4298,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3502,10 +4322,13 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "automatico",
+          "Dependencias": []
         }
       ],
-      "Checks": []
+      "Checks": [
+        "cloudtrail_cloudwatch_logging_enabled"
+      ]
     },
     {
       "Id": "mp.com.2.aws.vpn.1",
@@ -3521,7 +4344,8 @@
           "Dimensiones": [
             "confidencialidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3540,7 +4364,8 @@
           "Dimensiones": [
             "confidencialidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3560,7 +4385,8 @@
             "integridad",
             "autenticidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3580,7 +4406,8 @@
             "confidencialidad",
             "integridad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3603,7 +4430,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3622,10 +4450,57 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
+    },
+    {
+      "Id": "mp.info.6.aws.bcku.1",
+      "Description": "Copias de seguridad",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.info.6",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de la información",
+          "DescripcionControl": "Para los procedimientos de respaldo de cualquiera de los dos entornos (local y nube) y siempre y cuando se utilicen recursos compatibles en el entorno local, la entidad puede hacer uso de AWS Backup, que permite elaboración de planes de respaldo y la definición de reglas de frecuencia, ciclo de vida, lugar de almacenamiento y etiquetado de las copias de seguridad.",
+          "Nivel": "alto",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "backup_plans_exist",
+        "backup_vaults_exist",
+        "backup_reportplans_exist"
+      ]
+    },
+    {
+      "Id": "mp.info.6.aws.tag.1",
+      "Description": "Copias de seguridad",
+      "Attributes": [
+        {
+          "IdGrupoControl": "mp.info.6",
+          "Marco": "medidas de protección",
+          "Categoria": "protección de la información",
+          "DescripcionControl": "Los planes de respaldo se pueden integrar con AWS Tags, acotando con base en las etiquetas de los recursos el alcance de cada proceso de copiado.",
+          "Nivel": "alto",
+          "Tipo": "recomendacion",
+          "Dimensiones": [
+            "disponibilidad"
+          ],
+          "ModoEjecucion": "automático",
+          "Dependencias": []
+        }
+      ],
+      "Checks": [
+        "organizations_tags_policies_enabled_and_attached"
+      ]
     },
     {
       "Id": "mp.info.6.r2.aws.bcku.1",
@@ -3641,7 +4516,8 @@
           "Dimensiones": [
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3664,7 +4540,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3687,7 +4564,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []
@@ -3710,7 +4588,8 @@
             "autenticidad",
             "disponibilidad"
           ],
-          "ModoEjecucion": "manual"
+          "ModoEjecucion": "manual",
+          "Dependencias": []
         }
       ],
       "Checks": []

@@ -1,101 +1,102 @@
-from boto3 import client, resource, session
-from moto import mock_ec2, mock_elb
+from boto3 import client, resource
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
 from prowler.providers.aws.services.elb.elb_service import ELB
-
-AWS_ACCOUNT_NUMBER = 123456789012
-AWS_REGION = "us-east-1"
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_US_EAST_1,
+    AWS_REGION_US_EAST_1_AZA,
+    set_mocked_aws_provider,
+)
 
 
 class Test_ELB_Service:
-    # Mocked Audit Info
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=AWS_ACCOUNT_NUMBER,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=None,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test ELB Service
-    @mock_elb
+    @mock_aws
     def test_service(self):
         # ELB client for this test class
-        audit_info = self.set_mocked_audit_info()
-        elb = ELB(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        elb = ELB(aws_provider)
         assert elb.service == "elb"
 
     # Test ELB Client
-    @mock_elb
+    @mock_aws
     def test_client(self):
         # ELB client for this test class
-        audit_info = self.set_mocked_audit_info()
-        elb = ELB(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        elb = ELB(aws_provider)
         for regional_client in elb.regional_clients.values():
             assert regional_client.__class__.__name__ == "ElasticLoadBalancing"
 
     # Test ELB Session
-    @mock_elb
+    @mock_aws
     def test__get_session__(self):
         # ELB client for this test class
-        audit_info = self.set_mocked_audit_info()
-        elb = ELB(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        elb = ELB(aws_provider)
         assert elb.session.__class__.__name__ == "Session"
 
     # Test ELB Describe Load Balancers
-    @mock_ec2
-    @mock_elb
-    def test__describe_load_balancers__(self):
-        elb = client("elb", region_name=AWS_REGION)
-        ec2 = resource("ec2", region_name=AWS_REGION)
-
+    @mock_aws
+    def test_describe_load_balancers(self):
+        elb = client("elb", region_name=AWS_REGION_US_EAST_1)
+        ec2 = resource("ec2", region_name=AWS_REGION_US_EAST_1)
+        acm = client("acm", region_name=AWS_REGION_US_EAST_1)
+        certificate = acm.request_certificate(DomainName="www.example.com")
         security_group = ec2.create_security_group(
             GroupName="sg01", Description="Test security group sg01"
         )
 
-        elb.create_load_balancer(
+        dns_name = elb.create_load_balancer(
             LoadBalancerName="my-lb",
             Listeners=[
-                {"Protocol": "tcp", "LoadBalancerPort": 80, "InstancePort": 8080},
-                {"Protocol": "http", "LoadBalancerPort": 81, "InstancePort": 9000},
+                {
+                    "Protocol": "tcp",
+                    "LoadBalancerPort": 80,
+                    "InstancePort": 8080,
+                    "SSLCertificateId": certificate["CertificateArn"],
+                },
+                {
+                    "Protocol": "http",
+                    "LoadBalancerPort": 81,
+                    "InstancePort": 9000,
+                    "SSLCertificateId": certificate["CertificateArn"],
+                },
             ],
-            AvailabilityZones=[f"{AWS_REGION}a"],
+            AvailabilityZones=[AWS_REGION_US_EAST_1_AZA],
             Scheme="internal",
             SecurityGroups=[security_group.id],
-        )
+        )["DNSName"]
+        elb_arn = f"arn:aws:elasticloadbalancing:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:loadbalancer/my-lb"
         # ELB client for this test class
-        audit_info = self.set_mocked_audit_info()
-        elb = ELB(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        elb = ELB(aws_provider)
         assert len(elb.loadbalancers) == 1
-        assert elb.loadbalancers[0].name == "my-lb"
-        assert elb.loadbalancers[0].region == AWS_REGION
-        assert elb.loadbalancers[0].scheme == "internal"
+        assert elb.loadbalancers[elb_arn].name == "my-lb"
+        assert elb.loadbalancers[elb_arn].region == AWS_REGION_US_EAST_1
+        assert elb.loadbalancers[elb_arn].scheme == "internal"
+        assert elb.loadbalancers[elb_arn].dns == dns_name
+        assert len(elb.loadbalancers[elb_arn].listeners) == 2
+        assert elb.loadbalancers[elb_arn].listeners[0].protocol == "TCP"
+        assert elb.loadbalancers[elb_arn].listeners[0].policies == []
         assert (
-            elb.loadbalancers[0].arn
-            == f"arn:aws:elasticloadbalancing:{AWS_REGION}:{AWS_ACCOUNT_NUMBER}:loadbalancer/my-lb"
+            elb.loadbalancers[elb_arn].listeners[0].certificate_arn
+            == certificate["CertificateArn"]
         )
+        assert elb.loadbalancers[elb_arn].listeners[1].protocol == "HTTP"
+        assert elb.loadbalancers[elb_arn].listeners[1].policies == []
+        assert (
+            elb.loadbalancers[elb_arn].listeners[0].certificate_arn
+            == certificate["CertificateArn"]
+        )
+        assert len(elb.loadbalancers[elb_arn].availability_zones) == 1
+        assert AWS_REGION_US_EAST_1_AZA in elb.loadbalancers[elb_arn].availability_zones
 
     # Test ELB Describe Load Balancers Attributes
-    @mock_ec2
-    @mock_elb
-    def test__describe_load_balancer_attributes__(self):
-        elb = client("elb", region_name=AWS_REGION)
-        ec2 = resource("ec2", region_name=AWS_REGION)
+    @mock_aws
+    def test_describe_load_balancer_attributes(self):
+        elb = client("elb", region_name=AWS_REGION_US_EAST_1)
+        ec2 = resource("ec2", region_name=AWS_REGION_US_EAST_1)
 
         security_group = ec2.create_security_group(
             GroupName="sg01", Description="Test security group sg01"
@@ -107,7 +108,7 @@ class Test_ELB_Service:
                 {"Protocol": "tcp", "LoadBalancerPort": 80, "InstancePort": 8080},
                 {"Protocol": "http", "LoadBalancerPort": 81, "InstancePort": 9000},
             ],
-            AvailabilityZones=[f"{AWS_REGION}a"],
+            AvailabilityZones=[f"{AWS_REGION_US_EAST_1}a"],
             Scheme="internal",
             SecurityGroups=[security_group.id],
         )
@@ -120,17 +121,60 @@ class Test_ELB_Service:
                     "S3BucketName": "mb",
                     "EmitInterval": 42,
                     "S3BucketPrefix": "s3bf",
-                }
+                },
+                "CrossZoneLoadBalancing": {"Enabled": True},
+                "ConnectionDraining": {"Enabled": True, "Timeout": 60},
             },
         )
+        elb_arn = f"arn:aws:elasticloadbalancing:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:loadbalancer/my-lb"
         # ELB client for this test class
-        audit_info = self.set_mocked_audit_info()
-        elb = ELB(audit_info)
-        assert elb.loadbalancers[0].name == "my-lb"
-        assert elb.loadbalancers[0].region == AWS_REGION
-        assert elb.loadbalancers[0].scheme == "internal"
-        assert elb.loadbalancers[0].access_logs
-        assert (
-            elb.loadbalancers[0].arn
-            == f"arn:aws:elasticloadbalancing:{AWS_REGION}:{AWS_ACCOUNT_NUMBER}:loadbalancer/my-lb"
+        aws_provider = set_mocked_aws_provider()
+        elb = ELB(aws_provider)
+        assert elb.loadbalancers[elb_arn].name == "my-lb"
+        assert elb.loadbalancers[elb_arn].region == AWS_REGION_US_EAST_1
+        assert elb.loadbalancers[elb_arn].scheme == "internal"
+        assert elb.loadbalancers[elb_arn].access_logs
+        assert elb.loadbalancers[elb_arn].cross_zone_load_balancing
+        assert elb.loadbalancers[elb_arn].connection_draining
+        assert elb.loadbalancers[elb_arn].desync_mitigation_mode is None
+
+    # Test ELB Describe Tags
+    @mock_aws
+    def test_describe_tags(self):
+        elb = client("elb", region_name=AWS_REGION_US_EAST_1)
+        ec2 = resource("ec2", region_name=AWS_REGION_US_EAST_1)
+
+        security_group = ec2.create_security_group(
+            GroupName="sg01", Description="Test security group sg01"
         )
+
+        elb.create_load_balancer(
+            LoadBalancerName="my-lb",
+            Listeners=[
+                {"Protocol": "tcp", "LoadBalancerPort": 80, "InstancePort": 8080},
+                {"Protocol": "http", "LoadBalancerPort": 81, "InstancePort": 9000},
+            ],
+            AvailabilityZones=[f"{AWS_REGION_US_EAST_1}a"],
+            Scheme="internal",
+            SecurityGroups=[security_group.id],
+        )
+
+        elb.add_tags(
+            LoadBalancerNames=["my-lb"],
+            Tags=[
+                {"Key": "key1", "Value": "value1"},
+                {"Key": "key2", "Value": "value2"},
+            ],
+        )
+        elb_arn = f"arn:aws:elasticloadbalancing:{AWS_REGION_US_EAST_1}:{AWS_ACCOUNT_NUMBER}:loadbalancer/my-lb"
+        # ELB client for this test class
+        aws_provider = set_mocked_aws_provider()
+        elb = ELB(aws_provider)
+        assert elb.loadbalancers[elb_arn].name == "my-lb"
+        assert elb.loadbalancers[elb_arn].region == AWS_REGION_US_EAST_1
+        assert elb.loadbalancers[elb_arn].scheme == "internal"
+        assert len(elb.loadbalancers[elb_arn].tags) == 2
+        assert elb.loadbalancers[elb_arn].tags[0]["Key"] == "key1"
+        assert elb.loadbalancers[elb_arn].tags[0]["Value"] == "value1"
+        assert elb.loadbalancers[elb_arn].tags[1]["Key"] == "key2"
+        assert elb.loadbalancers[elb_arn].tags[1]["Value"] == "value2"

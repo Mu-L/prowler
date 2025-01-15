@@ -1,19 +1,20 @@
+from datetime import datetime
 from unittest import mock
 
-from moto.core import DEFAULT_ACCOUNT_ID
-
 from prowler.providers.aws.services.secretsmanager.secretsmanager_service import Secret
-
-# Mock Test Region
-AWS_REGION = "eu-west-1"
+from tests.providers.aws.utils import AWS_ACCOUNT_NUMBER, AWS_REGION_EU_WEST_1
 
 
 class Test_secretsmanager_automatic_rotation_enabled:
     def test_no_secrets(self):
         secretsmanager_client = mock.MagicMock
         secretsmanager_client.secrets = {}
+
         with mock.patch(
             "prowler.providers.aws.services.secretsmanager.secretsmanager_service.SecretsManager",
+            new=secretsmanager_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.secretsmanager.secretsmanager_client.secretsmanager_client",
             new=secretsmanager_client,
         ):
             # Test Check
@@ -29,17 +30,22 @@ class Test_secretsmanager_automatic_rotation_enabled:
     def test_secret_rotation_disabled(self):
         secretsmanager_client = mock.MagicMock
         secret_name = "test-secret"
-        secret_arn = f"arn:aws:secretsmanager:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:secret:{secret_name}"
+        secret_arn = f"arn:aws:secretsmanager:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:secret:{secret_name}"
         secretsmanager_client.secrets = {
             secret_name: Secret(
                 arn=secret_arn,
-                region=AWS_REGION,
+                region=AWS_REGION_EU_WEST_1,
                 name=secret_name,
                 rotation_enabled=False,
+                last_accessed_date=datetime.min,
+                last_rotated_date=datetime.min,
             )
         }
         with mock.patch(
             "prowler.providers.aws.services.secretsmanager.secretsmanager_service.SecretsManager",
+            new=secretsmanager_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.secretsmanager.secretsmanager_client.secretsmanager_client",
             new=secretsmanager_client,
         ):
             # Test Check
@@ -51,7 +57,7 @@ class Test_secretsmanager_automatic_rotation_enabled:
             result = check.execute()
 
             assert len(result) == 1
-            assert result[0].region == AWS_REGION
+            assert result[0].region == AWS_REGION_EU_WEST_1
             assert result[0].resource_id == secret_name
             assert result[0].resource_arn == secret_arn
             assert result[0].status == "FAIL"
@@ -63,17 +69,22 @@ class Test_secretsmanager_automatic_rotation_enabled:
     def test_secret_rotation_enabled(self):
         secretsmanager_client = mock.MagicMock
         secret_name = "test-secret"
-        secret_arn = f"arn:aws:secretsmanager:{AWS_REGION}:{DEFAULT_ACCOUNT_ID}:secret:{secret_name}"
+        secret_arn = f"arn:aws:secretsmanager:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:secret:{secret_name}"
         secretsmanager_client.secrets = {
             secret_name: Secret(
                 arn=secret_arn,
-                region=AWS_REGION,
+                region=AWS_REGION_EU_WEST_1,
                 name=secret_name,
                 rotation_enabled=True,
+                last_accessed_date=datetime.min,
+                last_rotated_date=datetime.min,
             )
         }
         with mock.patch(
             "prowler.providers.aws.services.secretsmanager.secretsmanager_service.SecretsManager",
+            new=secretsmanager_client,
+        ), mock.patch(
+            "prowler.providers.aws.services.secretsmanager.secretsmanager_client.secretsmanager_client",
             new=secretsmanager_client,
         ):
             # Test Check
@@ -85,7 +96,7 @@ class Test_secretsmanager_automatic_rotation_enabled:
             result = check.execute()
 
             assert len(result) == 1
-            assert result[0].region == AWS_REGION
+            assert result[0].region == AWS_REGION_EU_WEST_1
             assert result[0].resource_id == secret_name
             assert result[0].resource_arn == secret_arn
             assert result[0].status == "PASS"

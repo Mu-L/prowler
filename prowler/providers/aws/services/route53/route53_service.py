@@ -4,38 +4,29 @@ from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## Route53
-class Route53:
-    def __init__(self, audit_info):
-        self.service = "route53"
-        self.session = audit_info.audit_session
-        self.audited_partition = audit_info.audited_partition
-        self.audit_resources = audit_info.audit_resources
+class Route53(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider, global_service=True)
         self.hosted_zones = {}
-        global_client = generate_regional_clients(
-            self.service, audit_info, global_service=True
-        )
-        if global_client:
-            self.client = list(global_client.values())[0]
-            self.region = self.client.region
-            self.__list_hosted_zones__()
-            self.__list_query_logging_configs__()
-            self.__list_tags_for_resource__()
+        self.record_sets = []
+        self._list_hosted_zones()
+        self._list_query_logging_configs()
+        self._list_tags_for_resource()
+        self._list_resource_record_sets()
 
-    def __get_session__(self):
-        return self.session
-
-    def __list_hosted_zones__(self):
+    def _list_hosted_zones(self):
         logger.info("Route53 - Listing Hosting Zones...")
         try:
             list_hosted_zones_paginator = self.client.get_paginator("list_hosted_zones")
             for page in list_hosted_zones_paginator.paginate():
                 for hosted_zone in page["HostedZones"]:
                     hosted_zone_id = hosted_zone["Id"].replace("/hostedzone/", "")
-                    arn = f"arn:{self.audited_partition}:route53:::{hosted_zone_id}"
+                    arn = f"arn:{self.audited_partition}:route53:::hostedzone/{hosted_zone_id}"
                     if not self.audit_resources or (
                         is_resource_filtered(arn, self.audit_resources)
                     ):
@@ -55,7 +46,39 @@ class Route53:
                 f"{self.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __list_query_logging_configs__(self):
+    def _list_resource_record_sets(self):
+        logger.info("Route53 - Listing Hosting Zones...")
+        try:
+            list_resource_record_sets_paginator = self.client.get_paginator(
+                "list_resource_record_sets"
+            )
+            for zone_id in self.hosted_zones.keys():
+                for page in list_resource_record_sets_paginator.paginate(
+                    HostedZoneId=zone_id
+                ):
+                    for record in page["ResourceRecordSets"]:
+                        self.record_sets.append(
+                            RecordSet(
+                                name=record["Name"],
+                                type=record["Type"],
+                                records=[
+                                    resource_record["Value"]
+                                    for resource_record in record.get(
+                                        "ResourceRecords", []
+                                    )
+                                ],
+                                is_alias=True if "AliasTarget" in record else False,
+                                hosted_zone_id=zone_id,
+                                region=self.region,
+                            )
+                        )
+
+        except Exception as error:
+            logger.error(
+                f"{self.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+            )
+
+    def _list_query_logging_configs(self):
         logger.info("Route53 - Listing Query Logging Configs...")
         try:
             for hosted_zone in self.hosted_zones.values():
@@ -64,12 +87,12 @@ class Route53:
                 )
                 for page in list_query_logging_configs_paginator.paginate():
                     for logging_config in page["QueryLoggingConfigs"]:
-                        self.hosted_zones[
-                            hosted_zone.id
-                        ].logging_config = LoggingConfig(
-                            cloudwatch_log_group_arn=logging_config[
-                                "CloudWatchLogsLogGroupArn"
-                            ]
+                        self.hosted_zones[hosted_zone.id].logging_config = (
+                            LoggingConfig(
+                                cloudwatch_log_group_arn=logging_config[
+                                    "CloudWatchLogsLogGroupArn"
+                                ]
+                            )
                         )
 
         except Exception as error:
@@ -77,7 +100,7 @@ class Route53:
                 f"{self.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __list_tags_for_resource__(self):
+    def _list_tags_for_resource(self):
         logger.info("Route53Domains - List Tags...")
         for hosted_zone in self.hosted_zones.values():
             try:
@@ -105,26 +128,31 @@ class HostedZone(BaseModel):
     tags: Optional[list] = []
 
 
+class RecordSet(BaseModel):
+    name: str
+    type: str
+    is_alias: bool
+    records: list = []
+    hosted_zone_id: str
+    region: str
+
+
 ################## Route53Domains
-class Route53Domains:
-    def __init__(self, audit_info):
-        self.service = "route53domains"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
+class Route53Domains(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.domains = {}
-        if audit_info.audited_partition == "aws":
+        if self.audited_partition == "aws":
             # Route53Domains is a global service that supports endpoints in multiple AWS Regions
             # but you must specify the US East (N. Virginia) Region to create, update, or otherwise work with domains.
             self.region = "us-east-1"
             self.client = self.session.client(self.service, self.region)
-            self.__list_domains__()
-            self.__get_domain_detail__()
-            self.__list_tags_for_domain__()
+            self._list_domains()
+            self._get_domain_detail()
+            self._list_tags_for_domain()
 
-    def __get_session__(self):
-        return self.session
-
-    def __list_domains__(self):
+    def _list_domains(self):
         logger.info("Route53Domains - Listing Domains...")
         try:
             list_domains_zones_paginator = self.client.get_paginator("list_domains")
@@ -133,7 +161,9 @@ class Route53Domains:
                     domain_name = domain["DomainName"]
 
                     self.domains[domain_name] = Domain(
-                        name=domain_name, region=self.region
+                        name=domain_name,
+                        arn=f"arn:{self.audited_partition}:route53:::domain/{domain_name}",
+                        region=self.region,
                     )
 
         except Exception as error:
@@ -141,7 +171,7 @@ class Route53Domains:
                 f"{self.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __get_domain_detail__(self):
+    def _get_domain_detail(self):
         logger.info("Route53Domains - Getting Domain Detail...")
         try:
             for domain in self.domains.values():
@@ -154,7 +184,7 @@ class Route53Domains:
                 f"{self.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
 
-    def __list_tags_for_domain__(self):
+    def _list_tags_for_domain(self):
         logger.info("Route53Domains - List Tags...")
         for domain in self.domains.values():
             try:
@@ -170,6 +200,7 @@ class Route53Domains:
 
 class Domain(BaseModel):
     name: str
+    arn: str
     region: str
     admin_privacy: bool = False
     status_list: list[str] = None

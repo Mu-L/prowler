@@ -1,75 +1,61 @@
-from boto3 import client, session
-from moto import mock_config
+from boto3 import client
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
 from prowler.providers.aws.services.config.config_service import Config
-
-AWS_ACCOUNT_NUMBER = 123456789012
-AWS_REGION = "us-east-1"
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_EU_WEST_1,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 
 class Test_Config_Service:
-    # Mocked Audit Info
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=AWS_ACCOUNT_NUMBER,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=None,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=["eu-west-1", "us-east-1"],
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test Config Service
-    @mock_config
+    @mock_aws
     def test_service(self):
         # Config client for this test class
-        audit_info = self.set_mocked_audit_info()
-        config = Config(audit_info)
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
+        config = Config(aws_provider)
         assert config.service == "config"
 
     # Test Config Client
-    @mock_config
+    @mock_aws
     def test_client(self):
         # Config client for this test class
-        audit_info = self.set_mocked_audit_info()
-        config = Config(audit_info)
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
+        config = Config(aws_provider)
         for regional_client in config.regional_clients.values():
             assert regional_client.__class__.__name__ == "ConfigService"
 
     # Test Config Session
-    @mock_config
+    @mock_aws
     def test__get_session__(self):
         # Config client for this test class
-        audit_info = self.set_mocked_audit_info()
-        config = Config(audit_info)
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
+        config = Config(aws_provider)
         assert config.session.__class__.__name__ == "Session"
 
     # Test Config Session
-    @mock_config
+    @mock_aws
     def test_audited_account(self):
         # Config client for this test class
-        audit_info = self.set_mocked_audit_info()
-        config = Config(audit_info)
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
+        config = Config(aws_provider)
         assert config.audited_account == AWS_ACCOUNT_NUMBER
 
-    # Test Config Get Rest APIs
-    @mock_config
-    def test__describe_configuration_recorder_status__(self):
+    @mock_aws
+    def test_describe_configuration_recorders(self):
         # Generate Config Client
-        config_client = client("config", region_name=AWS_REGION)
+        config_client = client("config", region_name=AWS_REGION_EU_WEST_1)
         # Create Config Recorder and start it
         config_client.put_configuration_recorder(
             ConfigurationRecorder={"name": "default", "roleARN": "somearn"}
@@ -80,12 +66,39 @@ class Test_Config_Service:
         )
         config_client.start_configuration_recorder(ConfigurationRecorderName="default")
         # Config client for this test class
-        audit_info = self.set_mocked_audit_info()
-        config = Config(audit_info)
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+        config = Config(aws_provider)
+        # One recorder per region
+        assert len(config.recorders) == 1
+        # Check the active one
+        assert "default" in config.recorders
+        assert config.recorders["default"].name == "default"
+        assert config.recorders["default"].role_arn == "somearn"
+        assert config.recorders["default"].region == AWS_REGION_EU_WEST_1
+
+    # Test Config Get Rest APIs
+    @mock_aws
+    def test_describe_configuration_recorder_status(self):
+        # Generate Config Client
+        config_client = client("config", region_name=AWS_REGION_US_EAST_1)
+        # Create Config Recorder and start it
+        config_client.put_configuration_recorder(
+            ConfigurationRecorder={"name": "default", "roleARN": "somearn"}
+        )
+        # Make the delivery channel
+        config_client.put_delivery_channel(
+            DeliveryChannel={"name": "testchannel", "s3BucketName": "somebucket"}
+        )
+        config_client.start_configuration_recorder(ConfigurationRecorderName="default")
+        # Config client for this test class
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
+        config = Config(aws_provider)
         # One recorder per region
         assert len(config.recorders) == 2
         # Check the active one
         # Search for the recorder just created
-        for recorder in config.recorders:
+        for recorder in config.recorders.values():
             if recorder.name == "default":
                 assert recorder.recording is True

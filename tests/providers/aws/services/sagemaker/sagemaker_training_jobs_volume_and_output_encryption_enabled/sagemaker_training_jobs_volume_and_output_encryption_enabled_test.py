@@ -1,14 +1,15 @@
-from re import search
 from unittest import mock
 from uuid import uuid4
 
 from prowler.providers.aws.services.sagemaker.sagemaker_service import TrainingJob
-
-AWS_REGION = "eu-west-1"
-AWS_ACCOUNT_NUMBER = "123456789012"
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_EU_WEST_1,
+    set_mocked_aws_provider,
+)
 
 test_training_job = "test-training-job"
-training_job_arn = f"arn:aws:sagemaker:{AWS_REGION}:{AWS_ACCOUNT_NUMBER}:training-job/{test_training_job}"
+training_job_arn = f"arn:aws:sagemaker:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:training-job/{test_training_job}"
 kms_key_id = str(uuid4())
 
 
@@ -16,8 +17,14 @@ class Test_sagemaker_training_jobs_volume_and_output_encryption_enabled:
     def test_no_training_jobs(self):
         sagemaker_client = mock.MagicMock
         sagemaker_client.sagemaker_training_jobs = []
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+
         with mock.patch(
-            "prowler.providers.aws.services.sagemaker.sagemaker_service.SageMaker",
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
+            "prowler.providers.aws.services.sagemaker.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_client",
             sagemaker_client,
         ):
             from prowler.providers.aws.services.sagemaker.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_training_jobs_volume_and_output_encryption_enabled import (
@@ -35,12 +42,18 @@ class Test_sagemaker_training_jobs_volume_and_output_encryption_enabled:
             TrainingJob(
                 name=test_training_job,
                 arn=training_job_arn,
-                region=AWS_REGION,
+                region=AWS_REGION_EU_WEST_1,
                 volume_kms_key_id=kms_key_id,
             )
         )
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+
         with mock.patch(
-            "prowler.providers.aws.services.sagemaker.sagemaker_service.SageMaker",
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
+            "prowler.providers.aws.services.sagemaker.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_client",
             sagemaker_client,
         ):
             from prowler.providers.aws.services.sagemaker.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_training_jobs_volume_and_output_encryption_enabled import (
@@ -51,7 +64,10 @@ class Test_sagemaker_training_jobs_volume_and_output_encryption_enabled:
             result = check.execute()
             assert len(result) == 1
             assert result[0].status == "PASS"
-            assert search("has KMS encryption enabled", result[0].status_extended)
+            assert (
+                result[0].status_extended
+                == f"Sagemaker training job {test_training_job} has KMS encryption enabled."
+            )
             assert result[0].resource_id == test_training_job
             assert result[0].resource_arn == training_job_arn
 
@@ -62,11 +78,17 @@ class Test_sagemaker_training_jobs_volume_and_output_encryption_enabled:
             TrainingJob(
                 name=test_training_job,
                 arn=training_job_arn,
-                region=AWS_REGION,
+                region=AWS_REGION_EU_WEST_1,
             )
         )
+
+        aws_provider = set_mocked_aws_provider([AWS_REGION_EU_WEST_1])
+
         with mock.patch(
-            "prowler.providers.aws.services.sagemaker.sagemaker_service.SageMaker",
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
+            "prowler.providers.aws.services.sagemaker.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_client",
             sagemaker_client,
         ):
             from prowler.providers.aws.services.sagemaker.sagemaker_training_jobs_volume_and_output_encryption_enabled.sagemaker_training_jobs_volume_and_output_encryption_enabled import (
@@ -77,6 +99,9 @@ class Test_sagemaker_training_jobs_volume_and_output_encryption_enabled:
             result = check.execute()
             assert len(result) == 1
             assert result[0].status == "FAIL"
-            assert search("has KMS encryption disabled", result[0].status_extended)
+            assert (
+                result[0].status_extended
+                == f"Sagemaker training job {test_training_job} has KMS encryption disabled."
+            )
             assert result[0].resource_id == test_training_job
             assert result[0].resource_arn == training_job_arn

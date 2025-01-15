@@ -9,8 +9,10 @@
 __pycache__
 venv/
 build/
-dist/
+/dist/
 *.egg-info/
+*/__pycache__/*.pyc
+.idea/
 
 # Session
 Session.vim
@@ -43,6 +45,19 @@ junit-reports/
 # Terraform
 .terraform*
 *.tfstate
+*.tfstate.*
 
 # .env
-.env*
+ui/.env*
+api/.env*
+
+# Coverage
+.coverage*
+.coverage
+coverage*
+
+# Node
+node_modules
+
+# Persistent data
+_data/

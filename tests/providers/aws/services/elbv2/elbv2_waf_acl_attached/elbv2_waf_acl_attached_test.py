@@ -1,12 +1,16 @@
-from re import search
 from unittest import mock
 
 import botocore
 from boto3 import client, resource
-from moto import mock_ec2, mock_elbv2, mock_wafv2
+from moto import mock_aws
 
-AWS_REGION = "eu-west-1"
-AWS_ACCOUNT_NUMBER = "123456789012"
+from tests.providers.aws.utils import (
+    AWS_REGION_EU_WEST_1,
+    AWS_REGION_EU_WEST_1_AZA,
+    AWS_REGION_EU_WEST_1_AZB,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 # Mocking WAF-Regional Calls
 make_api_call = botocore.client.BaseClient._make_api_call
@@ -31,45 +35,47 @@ def mock_make_api_call(self, operation_name, kwarg):
 
 
 class Test_elbv2_waf_acl_attached:
-    @mock_wafv2
-    @mock_elbv2
+    @mock_aws
     def test_elb_no_balancers(self):
-
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.elbv2.elbv2_service import ELBv2
-        from prowler.providers.aws.services.waf.waf_service import WAF
+        from prowler.providers.aws.services.waf.waf_service import WAFRegional
         from prowler.providers.aws.services.wafv2.wafv2_service import WAFv2
 
-        current_audit_info.audited_partition = "aws"
-
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(
+                [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+            ),
+        ), mock.patch(
             "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.elbv2_client",
-            new=ELBv2(current_audit_info),
+            new=ELBv2(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
+        ), mock.patch(
+            "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafv2_client",
+            new=WAFv2(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
+        ), mock.patch(
+            "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafregional_client",
+            new=WAFRegional(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
         ):
-            with mock.patch(
-                "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafv2_client",
-                new=WAFv2(current_audit_info),
-            ):
-                with mock.patch(
-                    "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.waf_client",
-                    new=WAF(current_audit_info),
-                ):
-                    # Test Check
-                    from prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached import (
-                        elbv2_waf_acl_attached,
-                    )
+            # Test Check
+            from prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached import (
+                elbv2_waf_acl_attached,
+            )
 
-                    check = elbv2_waf_acl_attached()
-                    result = check.execute()
+            check = elbv2_waf_acl_attached()
+            result = check.execute()
 
-                    assert len(result) == 0
+            assert len(result) == 0
 
-    @mock_wafv2
-    @mock_ec2
-    @mock_elbv2
+    @mock_aws
     def test_elbv2_without_WAF(self):
-        conn = client("elbv2", region_name=AWS_REGION)
-        ec2 = resource("ec2", region_name=AWS_REGION)
+        conn = client("elbv2", region_name=AWS_REGION_EU_WEST_1)
+        ec2 = resource("ec2", region_name=AWS_REGION_EU_WEST_1)
         wafv2 = client("wafv2", region_name="us-east-1")
         _ = wafv2.create_web_acl(
             Scope="REGIONAL",
@@ -86,10 +92,14 @@ class Test_elbv2_waf_acl_attached:
         )
         vpc = ec2.create_vpc(CidrBlock="172.28.7.0/24", InstanceTenancy="default")
         subnet1 = ec2.create_subnet(
-            VpcId=vpc.id, CidrBlock="172.28.7.192/26", AvailabilityZone=f"{AWS_REGION}a"
+            VpcId=vpc.id,
+            CidrBlock="172.28.7.192/26",
+            AvailabilityZone=AWS_REGION_EU_WEST_1_AZA,
         )
         subnet2 = ec2.create_subnet(
-            VpcId=vpc.id, CidrBlock="172.28.7.0/26", AvailabilityZone=f"{AWS_REGION}b"
+            VpcId=vpc.id,
+            CidrBlock="172.28.7.0/26",
+            AvailabilityZone=AWS_REGION_EU_WEST_1_AZB,
         )
 
         lb = conn.create_load_balancer(
@@ -100,48 +110,52 @@ class Test_elbv2_waf_acl_attached:
             Type="application",
         )["LoadBalancers"][0]
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.elbv2.elbv2_service import ELBv2
-        from prowler.providers.aws.services.waf.waf_service import WAF
+        from prowler.providers.aws.services.waf.waf_service import WAFRegional
         from prowler.providers.aws.services.wafv2.wafv2_service import WAFv2
 
-        current_audit_info.audited_partition = "aws"
-
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(
+                [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+            ),
+        ), mock.patch(
             "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.elbv2_client",
-            new=ELBv2(current_audit_info),
+            new=ELBv2(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
+        ), mock.patch(
+            "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafv2_client",
+            new=WAFv2(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
+        ), mock.patch(
+            "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafregional_client",
+            new=WAFRegional(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
         ):
-            with mock.patch(
-                "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafv2_client",
-                new=WAFv2(current_audit_info),
-            ):
-                with mock.patch(
-                    "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.waf_client",
-                    new=WAF(current_audit_info),
-                ):
-                    # Test Check
-                    from prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached import (
-                        elbv2_waf_acl_attached,
-                    )
+            # Test Check
+            from prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached import (
+                elbv2_waf_acl_attached,
+            )
 
-                    check = elbv2_waf_acl_attached()
-                    result = check.execute()
+            check = elbv2_waf_acl_attached()
+            result = check.execute()
 
-                    assert len(result) == 1
-                    assert result[0].status == "FAIL"
-                    assert search(
-                        "is not protected by WAF Web ACL",
-                        result[0].status_extended,
-                    )
-                    assert result[0].resource_id == "my-lb"
-                    assert result[0].resource_arn == lb["LoadBalancerArn"]
+            assert len(result) == 1
+            assert result[0].status == "FAIL"
+            assert (
+                result[0].status_extended
+                == "ELBv2 ALB my-lb is not protected by WAF Web ACL."
+            )
+            assert result[0].resource_id == "my-lb"
+            assert result[0].resource_arn == lb["LoadBalancerArn"]
 
-    @mock_wafv2
-    @mock_ec2
-    @mock_elbv2
+    @mock_aws
     def test_elbv2_with_WAF(self):
-        conn = client("elbv2", region_name=AWS_REGION)
-        ec2 = resource("ec2", region_name=AWS_REGION)
+        conn = client("elbv2", region_name=AWS_REGION_EU_WEST_1)
+        ec2 = resource("ec2", region_name=AWS_REGION_EU_WEST_1)
         wafv2 = client("wafv2", region_name="us-east-1")
         waf = wafv2.create_web_acl(
             Scope="REGIONAL",
@@ -158,10 +172,14 @@ class Test_elbv2_waf_acl_attached:
         )
         vpc = ec2.create_vpc(CidrBlock="172.28.7.0/24", InstanceTenancy="default")
         subnet1 = ec2.create_subnet(
-            VpcId=vpc.id, CidrBlock="172.28.7.192/26", AvailabilityZone=f"{AWS_REGION}a"
+            VpcId=vpc.id,
+            CidrBlock="172.28.7.192/26",
+            AvailabilityZone=AWS_REGION_EU_WEST_1_AZA,
         )
         subnet2 = ec2.create_subnet(
-            VpcId=vpc.id, CidrBlock="172.28.7.0/26", AvailabilityZone=f"{AWS_REGION}b"
+            VpcId=vpc.id,
+            CidrBlock="172.28.7.0/26",
+            AvailabilityZone=AWS_REGION_EU_WEST_1_AZB,
         )
 
         lb = conn.create_load_balancer(
@@ -174,40 +192,49 @@ class Test_elbv2_waf_acl_attached:
 
         wafv2.associate_web_acl(WebACLArn=waf["ARN"], ResourceArn=lb["LoadBalancerArn"])
 
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.elbv2.elbv2_service import ELBv2
-        from prowler.providers.aws.services.waf.waf_service import WAF
+        from prowler.providers.aws.services.waf.waf_service import WAFRegional
         from prowler.providers.aws.services.wafv2.wafv2_service import WAFv2
 
-        current_audit_info.audited_partition = "aws"
-
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=set_mocked_aws_provider(
+                [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+            ),
+        ), mock.patch(
             "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.elbv2_client",
-            new=ELBv2(current_audit_info),
-        ):
+            new=ELBv2(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
+        ), mock.patch(
+            "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafv2_client",
+            new=WAFv2(
+                set_mocked_aws_provider([AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1])
+            ),
+        ) as service_client:
             with mock.patch(
-                "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafv2_client",
-                new=WAFv2(current_audit_info),
-            ) as service_client:
-                with mock.patch(
-                    "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.waf_client",
-                    new=WAF(current_audit_info),
-                ):
-                    # Test Check
-                    from prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached import (
-                        elbv2_waf_acl_attached,
+                "prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached.wafregional_client",
+                new=WAFRegional(
+                    set_mocked_aws_provider(
+                        [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
                     )
+                ),
+            ):
+                # Test Check
+                from prowler.providers.aws.services.elbv2.elbv2_waf_acl_attached.elbv2_waf_acl_attached import (
+                    elbv2_waf_acl_attached,
+                )
 
-                    service_client.web_acls[0].albs.append(lb["LoadBalancerArn"])
+                service_client.web_acls[waf["ARN"]].albs.append(lb["LoadBalancerArn"])
 
-                    check = elbv2_waf_acl_attached()
-                    result = check.execute()
+                check = elbv2_waf_acl_attached()
+                result = check.execute()
 
-                    assert len(result) == 1
-                    assert result[0].status == "PASS"
-                    assert search(
-                        "is protected by WAFv2 Web ACL",
-                        result[0].status_extended,
-                    )
-                    assert result[0].resource_id == "my-lb"
-                    assert result[0].resource_arn == lb["LoadBalancerArn"]
+                assert len(result) == 1
+                assert result[0].status == "PASS"
+                assert (
+                    result[0].status_extended
+                    == "ELBv2 ALB my-lb is protected by WAFv2 Web ACL my-web-acl."
+                )
+                assert result[0].resource_id == "my-lb"
+                assert result[0].resource_arn == lb["LoadBalancerArn"]

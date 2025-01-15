@@ -1,14 +1,19 @@
+from datetime import datetime
 from unittest.mock import patch
 
 import botocore
-from boto3 import client, session
-from moto import mock_guardduty
+from boto3 import client
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
 from prowler.providers.aws.services.guardduty.guardduty_service import GuardDuty
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_EU_WEST_1,
+    set_mocked_aws_provider,
+)
 
-AWS_ACCOUNT_NUMBER = 123456789012
-AWS_REGION = "eu-west-1"
+AWS_ACCOUNT_NUMBER_ADMIN = "123456789013"
+
 
 make_api_call = botocore.client.BaseClient._make_api_call
 
@@ -18,102 +23,187 @@ def mock_make_api_call(self, operation_name, kwarg):
         return {"FindingIds": ["86c1d16c9ec63f634ccd087ae0d427ba1"]}
     if operation_name == "ListTagsForResource":
         return {"Tags": {"test": "test"}}
+    if operation_name == "ListMembers":
+        return {
+            "Members": [
+                {
+                    "AccountId": AWS_ACCOUNT_NUMBER,
+                    "DetectorId": "11b4a9318fd146914420a637a4a9248b",
+                    "MasterId": AWS_ACCOUNT_NUMBER_ADMIN,
+                    "Email": "security@prowler.com",
+                    "RelationshipStatus": "Enabled",
+                    "InvitedAt": datetime(2020, 1, 1),
+                    "UpdatedAt": datetime(2021, 1, 1),
+                    "AdministratorId": AWS_ACCOUNT_NUMBER_ADMIN,
+                },
+            ],
+        }
+    if operation_name == "GetAdministratorAccount":
+        return {
+            "Administrator": {
+                "AccountId": AWS_ACCOUNT_NUMBER_ADMIN,
+                "InvitationId": "12b1a931a981d1e1f1f452cf2fb3d515",
+                "RelationshipStatus": "Enabled",
+                "InvitedAt": datetime(2020, 1, 1),
+            }
+        }
     return make_api_call(self, operation_name, kwarg)
 
 
-def mock_generate_regional_clients(service, audit_info):
-    regional_client = audit_info.audit_session.client(service, region_name=AWS_REGION)
-    regional_client.region = AWS_REGION
-    return {AWS_REGION: regional_client}
+def mock_generate_regional_clients(provider, service):
+    regional_client = provider._session.current_session.client(
+        service, region_name=AWS_REGION_EU_WEST_1
+    )
+    regional_client.region = AWS_REGION_EU_WEST_1
+    return {AWS_REGION_EU_WEST_1: regional_client}
 
 
 @patch("botocore.client.BaseClient._make_api_call", new=mock_make_api_call)
 @patch(
-    "prowler.providers.aws.services.guardduty.guardduty_service.generate_regional_clients",
+    "prowler.providers.aws.aws_provider.AwsProvider.generate_regional_clients",
     new=mock_generate_regional_clients,
 )
 class Test_GuardDuty_Service:
-    # Mocked Audit Info
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=AWS_ACCOUNT_NUMBER,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=None,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test GuardDuty Service
     def test_service(self):
-        audit_info = self.set_mocked_audit_info()
-        guardduty = GuardDuty(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
         assert guardduty.service == "guardduty"
 
     # Test GuardDuty client
     def test_client(self):
-        audit_info = self.set_mocked_audit_info()
-        guardduty = GuardDuty(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
         for reg_client in guardduty.regional_clients.values():
             assert reg_client.__class__.__name__ == "GuardDuty"
 
     # Test GuardDuty session
     def test__get_session__(self):
-        audit_info = self.set_mocked_audit_info()
-        guardduty = GuardDuty(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
         assert guardduty.session.__class__.__name__ == "Session"
 
-    @mock_guardduty
+    @mock_aws
     # Test GuardDuty session
-    def test__list_detectors__(self):
-        guardduty_client = client("guardduty", region_name=AWS_REGION)
+    def test_list_detectors(self):
+        guardduty_client = client("guardduty", region_name=AWS_REGION_EU_WEST_1)
         response = guardduty_client.create_detector(Enable=True, Tags={"test": "test"})
 
-        audit_info = self.set_mocked_audit_info()
-        guardduty = GuardDuty(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
 
         assert len(guardduty.detectors) == 1
         assert guardduty.detectors[0].id == response["DetectorId"]
-        assert guardduty.detectors[0].region == AWS_REGION
+        assert (
+            guardduty.detectors[0].arn
+            == f"arn:aws:guardduty:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:detector/{response['DetectorId']}"
+        )
+        assert guardduty.detectors[0].enabled_in_account
+        assert len(guardduty.detectors[0].findings) == 1
+        assert guardduty.detectors[0].member_accounts == ["123456789012"]
+        assert guardduty.detectors[0].administrator_account == "123456789013"
+        assert guardduty.detectors[0].region == AWS_REGION_EU_WEST_1
         assert guardduty.detectors[0].tags == [{"test": "test"}]
 
-    @mock_guardduty
+    @mock_aws
     # Test GuardDuty session
-    def test__get_detector__(self):
-        guardduty_client = client("guardduty", region_name=AWS_REGION)
-        response = guardduty_client.create_detector(Enable=True)
+    def test_get_detector(self):
+        guardduty_client = client("guardduty", region_name=AWS_REGION_EU_WEST_1)
+        response = guardduty_client.create_detector(
+            Enable=True,
+            DataSources={
+                "S3Logs": {"Enable": True},
+                "Kubernetes": {"AuditLogs": {"Enable": True}},
+            },
+            Features=[
+                {"Name": "LAMBDA_NETWORK_LOGS", "Status": "ENABLED"},
+                {"Name": "EKS_RUNTIME_MONITORING", "Status": "ENABLED"},
+            ],
+        )
 
-        audit_info = self.set_mocked_audit_info()
-        guardduty = GuardDuty(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
 
         assert len(guardduty.detectors) == 1
         assert guardduty.detectors[0].id == response["DetectorId"]
-        assert guardduty.detectors[0].region == AWS_REGION
-        assert guardduty.detectors[0].status
-
-    @mock_guardduty
-    # Test GuardDuty session
-    def test__list_findings__(self):
-        guardduty_client = client("guardduty", region_name=AWS_REGION)
-        response = guardduty_client.create_detector(Enable=True)
-
-        audit_info = self.set_mocked_audit_info()
-        guardduty = GuardDuty(audit_info)
-
-        assert len(guardduty.detectors) == 1
-        assert guardduty.detectors[0].id == response["DetectorId"]
-        assert guardduty.detectors[0].region == AWS_REGION
-        assert guardduty.detectors[0].status
+        assert (
+            guardduty.detectors[0].arn
+            == f"arn:aws:guardduty:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:detector/{response['DetectorId']}"
+        )
+        assert guardduty.detectors[0].enabled_in_account
         assert len(guardduty.detectors[0].findings) == 1
+        assert guardduty.detectors[0].member_accounts == ["123456789012"]
+        assert guardduty.detectors[0].administrator_account == "123456789013"
+        assert guardduty.detectors[0].s3_protection
+        assert not guardduty.detectors[0].rds_protection
+        assert guardduty.detectors[0].eks_audit_log_protection
+        assert guardduty.detectors[0].eks_runtime_monitoring
+        assert guardduty.detectors[0].lambda_protection
+        assert not guardduty.detectors[0].ec2_malware_protection
+        assert guardduty.detectors[0].region == AWS_REGION_EU_WEST_1
+        assert guardduty.detectors[0].tags == [{"test": "test"}]
+
+    @mock_aws
+    # Test GuardDuty session
+    def test_list_findings(self):
+        guardduty_client = client("guardduty", region_name=AWS_REGION_EU_WEST_1)
+        response = guardduty_client.create_detector(Enable=True)
+
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
+
+        assert len(guardduty.detectors) == 1
+        assert guardduty.detectors[0].id == response["DetectorId"]
+        assert (
+            guardduty.detectors[0].arn
+            == f"arn:aws:guardduty:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:detector/{response['DetectorId']}"
+        )
+        assert guardduty.detectors[0].enabled_in_account
+        assert len(guardduty.detectors[0].findings) == 1
+        assert guardduty.detectors[0].member_accounts == ["123456789012"]
+        assert guardduty.detectors[0].administrator_account == "123456789013"
+        assert guardduty.detectors[0].region == AWS_REGION_EU_WEST_1
+        assert guardduty.detectors[0].tags == [{"test": "test"}]
+
+    @mock_aws
+    def test_list_members(self):
+        guardduty_client = client("guardduty", region_name=AWS_REGION_EU_WEST_1)
+        response = guardduty_client.create_detector(Enable=True)
+
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
+
+        assert len(guardduty.detectors) == 1
+        assert guardduty.detectors[0].id == response["DetectorId"]
+        assert (
+            guardduty.detectors[0].arn
+            == f"arn:aws:guardduty:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:detector/{response['DetectorId']}"
+        )
+        assert guardduty.detectors[0].enabled_in_account
+        assert len(guardduty.detectors[0].findings) == 1
+        assert guardduty.detectors[0].member_accounts == ["123456789012"]
+        assert guardduty.detectors[0].administrator_account == "123456789013"
+        assert guardduty.detectors[0].region == AWS_REGION_EU_WEST_1
+        assert guardduty.detectors[0].tags == [{"test": "test"}]
+
+    @mock_aws
+    # Test GuardDuty session
+    def test_get_administrator_account(self):
+        guardduty_client = client("guardduty", region_name=AWS_REGION_EU_WEST_1)
+        response = guardduty_client.create_detector(Enable=True)
+
+        aws_provider = set_mocked_aws_provider()
+        guardduty = GuardDuty(aws_provider)
+
+        assert len(guardduty.detectors) == 1
+        assert guardduty.detectors[0].id == response["DetectorId"]
+        assert (
+            guardduty.detectors[0].arn
+            == f"arn:aws:guardduty:{AWS_REGION_EU_WEST_1}:{AWS_ACCOUNT_NUMBER}:detector/{response['DetectorId']}"
+        )
+        assert guardduty.detectors[0].enabled_in_account
+        assert len(guardduty.detectors[0].findings) == 1
+        assert guardduty.detectors[0].member_accounts == ["123456789012"]
+        assert guardduty.detectors[0].administrator_account == "123456789013"
+        assert guardduty.detectors[0].region == AWS_REGION_EU_WEST_1
+        assert guardduty.detectors[0].tags == [{"test": "test"}]

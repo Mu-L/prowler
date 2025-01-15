@@ -1,5 +1,4 @@
 import json
-import threading
 from typing import Optional
 
 from botocore.client import ClientError
@@ -7,35 +6,20 @@ from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
 ################## Glacier
-class Glacier:
-    def __init__(self, audit_info):
-        self.service = "glacier"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class Glacier(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.vaults = {}
-        self.__threading_call__(self.__list_vaults__)
-        self.__threading_call__(self.__get_vault_access_policy__)
-        self.__list_tags_for_vault__()
+        self.__threading_call__(self._list_vaults)
+        self.__threading_call__(self._get_vault_access_policy)
+        self._list_tags_for_vault()
 
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_vaults__(self, regional_client):
+    def _list_vaults(self, regional_client):
         logger.info("Glacier - Listing Vaults...")
         try:
             list_vaults_paginator = regional_client.get_paginator("list_vaults")
@@ -46,7 +30,8 @@ class Glacier:
                     ):
                         vault_name = vault["VaultName"]
                         vault_arn = vault["VaultARN"]
-                        self.vaults[vault_name] = Vault(
+                        # We must use the Vault ARN as the dict key to have unique keys
+                        self.vaults[vault_arn] = Vault(
                             name=vault_name,
                             arn=vault_arn,
                             region=regional_client.region,
@@ -59,7 +44,7 @@ class Glacier:
                 f" {error}"
             )
 
-    def __get_vault_access_policy__(self, regional_client):
+    def _get_vault_access_policy(self, regional_client):
         logger.info("Glacier - Getting Vault Access Policy...")
         try:
             for vault in self.vaults.values():
@@ -68,12 +53,12 @@ class Glacier:
                         vault_access_policy = regional_client.get_vault_access_policy(
                             vaultName=vault.name
                         )
-                        self.vaults[vault.name].access_policy = json.loads(
+                        self.vaults[vault.arn].access_policy = json.loads(
                             vault_access_policy["policy"]["Policy"]
                         )
                     except ClientError as e:
                         if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                            self.vaults[vault.name].access_policy = {}
+                            self.vaults[vault.arn].access_policy = {}
         except Exception as error:
             logger.error(
                 f"{regional_client.region} --"
@@ -81,7 +66,7 @@ class Glacier:
                 f" {error}"
             )
 
-    def __list_tags_for_vault__(self):
+    def _list_tags_for_vault(self):
         logger.info("Glacier - List Tags...")
         try:
             for vault in self.vaults.values():

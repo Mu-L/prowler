@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.ssm.ssm_service import SSM
+from prowler.providers.common.provider import Provider
 
-ssm_client = SSM(current_audit_info)
+ssm_client = SSM(Provider.get_global_provider())

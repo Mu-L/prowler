@@ -1,19 +1,20 @@
-from re import search
-from unittest import mock
+from unittest.mock import MagicMock, patch
 
 from prowler.providers.aws.services.glue.glue_service import Job, SecurityConfig
-
-AWS_REGION = "us-east-1"
+from tests.providers.aws.utils import AWS_REGION_US_EAST_1
 
 
 class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
     def test_glue_no_jobs(self):
-        glue_client = mock.MagicMock
+        glue_client = MagicMock
         glue_client.jobs = []
 
-        with mock.patch(
+        with patch(
             "prowler.providers.aws.services.glue.glue_service.Glue",
-            glue_client,
+            new=glue_client,
+        ), patch(
+            "prowler.providers.aws.services.glue.glue_client.glue_client",
+            new=glue_client,
         ):
             # Test Check
             from prowler.providers.aws.services.glue.glue_etl_jobs_amazon_s3_encryption_enabled.glue_etl_jobs_amazon_s3_encryption_enabled import (
@@ -26,13 +27,15 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
             assert len(result) == 0
 
     def test_glue_encrypted_job(self):
-        glue_client = mock.MagicMock
+        glue_client = MagicMock
         glue_client.jobs = [
             Job(
                 name="test",
                 security="sec_config",
                 arguments=None,
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
+                arn="arn_test",
+                tags=[{"key_test": "value_test"}],
             )
         ]
         glue_client.security_configs = [
@@ -42,13 +45,16 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
                 s3_key_arn="key_arn",
                 cw_encryption="DISABLED",
                 jb_encryption="DISABLED",
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
             )
         ]
 
-        with mock.patch(
+        with patch(
             "prowler.providers.aws.services.glue.glue_service.Glue",
-            glue_client,
+            new=glue_client,
+        ), patch(
+            "prowler.providers.aws.services.glue.glue_client.glue_client",
+            new=glue_client,
         ):
             # Test Check
             from prowler.providers.aws.services.glue.glue_etl_jobs_amazon_s3_encryption_enabled.glue_etl_jobs_amazon_s3_encryption_enabled import (
@@ -60,20 +66,24 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
 
             assert len(result) == 1
             assert result[0].status == "PASS"
-            assert search(
-                "has S3 encryption enabled with key",
-                result[0].status_extended,
+            assert (
+                result[0].status_extended
+                == "Glue job test has S3 encryption enabled with key key_arn."
             )
             assert result[0].resource_id == "test"
+            assert result[0].resource_arn == "arn_test"
+            assert result[0].resource_tags == [{"key_test": "value_test"}]
 
     def test_glue_unencrypted_job(self):
-        glue_client = mock.MagicMock
+        glue_client = MagicMock
         glue_client.jobs = [
             Job(
                 name="test",
                 security="sec_config",
                 arguments=None,
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
+                arn="arn_test",
+                tags=[{"key_test": "value_test"}],
             )
         ]
         glue_client.security_configs = [
@@ -82,13 +92,16 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
                 s3_encryption="DISABLED",
                 cw_encryption="DISABLED",
                 jb_encryption="DISABLED",
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
             )
         ]
 
-        with mock.patch(
+        with patch(
             "prowler.providers.aws.services.glue.glue_service.Glue",
-            glue_client,
+            new=glue_client,
+        ), patch(
+            "prowler.providers.aws.services.glue.glue_client.glue_client",
+            new=glue_client,
         ):
             # Test Check
             from prowler.providers.aws.services.glue.glue_etl_jobs_amazon_s3_encryption_enabled.glue_etl_jobs_amazon_s3_encryption_enabled import (
@@ -100,26 +113,33 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
 
             assert len(result) == 1
             assert result[0].status == "FAIL"
-            assert search(
-                "does not have S3 encryption enabled",
-                result[0].status_extended,
+            assert (
+                result[0].status_extended
+                == "Glue job test does not have S3 encryption enabled."
             )
             assert result[0].resource_id == "test"
+            assert result[0].resource_arn == "arn_test"
+            assert result[0].resource_tags == [{"key_test": "value_test"}]
 
     def test_glue_no_sec_configs(self):
-        glue_client = mock.MagicMock
+        glue_client = MagicMock
         glue_client.jobs = [
             Job(
                 name="test",
                 security="sec_config",
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
+                arn="arn_test",
+                tags=[{"key_test": "value_test"}],
             )
         ]
         glue_client.security_configs = []
 
-        with mock.patch(
+        with patch(
             "prowler.providers.aws.services.glue.glue_service.Glue",
-            glue_client,
+            new=glue_client,
+        ), patch(
+            "prowler.providers.aws.services.glue.glue_client.glue_client",
+            new=glue_client,
         ):
             # Test Check
             from prowler.providers.aws.services.glue.glue_etl_jobs_amazon_s3_encryption_enabled.glue_etl_jobs_amazon_s3_encryption_enabled import (
@@ -131,14 +151,16 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
 
             assert len(result) == 1
             assert result[0].status == "FAIL"
-            assert search(
-                "does not have security configuration",
-                result[0].status_extended,
+            assert (
+                result[0].status_extended
+                == "Glue job test does not have security configuration."
             )
             assert result[0].resource_id == "test"
+            assert result[0].resource_arn == "arn_test"
+            assert result[0].resource_tags == [{"key_test": "value_test"}]
 
     def test_glue_encrypted_job_with_argument(self):
-        glue_client = mock.MagicMock
+        glue_client = MagicMock
         glue_client.jobs = [
             Job(
                 name="test",
@@ -147,14 +169,19 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
                     "--encryption-type": "sse-s3",
                     "--enable-job-insights": "false",
                 },
-                region=AWS_REGION,
+                region=AWS_REGION_US_EAST_1,
+                arn="arn_test",
+                tags=[{"key_test": "value_test"}],
             )
         ]
         glue_client.security_configs = []
 
-        with mock.patch(
+        with patch(
             "prowler.providers.aws.services.glue.glue_service.Glue",
-            glue_client,
+            new=glue_client,
+        ), patch(
+            "prowler.providers.aws.services.glue.glue_client.glue_client",
+            new=glue_client,
         ):
             # Test Check
             from prowler.providers.aws.services.glue.glue_etl_jobs_amazon_s3_encryption_enabled.glue_etl_jobs_amazon_s3_encryption_enabled import (
@@ -166,8 +193,9 @@ class Test_glue_etl_jobs_amazon_s3_encryption_enabled:
 
             assert len(result) == 1
             assert result[0].status == "PASS"
-            assert search(
-                "has S3 encryption enabled",
-                result[0].status_extended,
+            assert (
+                result[0].status_extended == "Glue job test has S3 encryption enabled."
             )
             assert result[0].resource_id == "test"
+            assert result[0].resource_arn == "arn_test"
+            assert result[0].resource_tags == [{"key_test": "value_test"}]

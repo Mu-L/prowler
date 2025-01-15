@@ -7,7 +7,7 @@ from prowler.providers.aws.services.opensearch.opensearch_client import (
 class opensearch_service_domains_audit_logging_enabled(Check):
     def execute(self):
         findings = []
-        for domain in opensearch_client.opensearch_domains:
+        for domain in opensearch_client.opensearch_domains.values():
             report = Check_Report_AWS(self.metadata())
             report.region = domain.region
             report.resource_id = domain.name
@@ -15,13 +15,13 @@ class opensearch_service_domains_audit_logging_enabled(Check):
             report.resource_tags = domain.tags
             report.status = "FAIL"
             report.status_extended = (
-                f"Opensearch domain {domain.name} AUDIT_LOGS disabled"
+                f"Opensearch domain {domain.name} AUDIT_LOGS disabled."
             )
             for logging_item in domain.logging:
                 if logging_item.name == "AUDIT_LOGS" and logging_item.enabled:
                     report.status = "PASS"
                     report.status_extended = (
-                        f"Opensearch domain {domain.name} AUDIT_LOGS enabled"
+                        f"Opensearch domain {domain.name} AUDIT_LOGS enabled."
                     )
 
             findings.append(report)

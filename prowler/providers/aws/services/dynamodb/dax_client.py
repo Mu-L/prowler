@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.dynamodb.dynamodb_service import DAX
+from prowler.providers.common.provider import Provider
 
-dax_client = DAX(current_audit_info)
+dax_client = DAX(Provider.get_global_provider())

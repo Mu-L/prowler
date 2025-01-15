@@ -1,23 +1,30 @@
-from re import search
 from unittest import mock
 
 from boto3 import client
-from moto import mock_dynamodb
+from moto import mock_aws
 
-AWS_REGION = "us-east-1"
+from tests.providers.aws.utils import (
+    AWS_REGION_EU_WEST_1,
+    AWS_REGION_US_EAST_1,
+    set_mocked_aws_provider,
+)
 
 
 class Test_dynamodb_tables_kms_cmk_encryption_enabled:
-    @mock_dynamodb
+    @mock_aws
     def test_dynamodb_no_tables(self):
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.dynamodb.dynamodb_service import DynamoDB
 
-        current_audit_info.audited_partition = "aws"
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.dynamodb.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_client",
-            new=DynamoDB(current_audit_info),
+            new=DynamoDB(aws_provider),
         ):
             # Test Check
             from prowler.providers.aws.services.dynamodb.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_tables_kms_cmk_encryption_enabled import (
@@ -29,9 +36,9 @@ class Test_dynamodb_tables_kms_cmk_encryption_enabled:
 
             assert len(result) == 0
 
-    @mock_dynamodb
+    @mock_aws
     def test_dynamodb_table_kms_encryption(self):
-        dynamodb_client = client("dynamodb", region_name=AWS_REGION)
+        dynamodb_client = client("dynamodb", region_name=AWS_REGION_US_EAST_1)
         table = dynamodb_client.create_table(
             TableName="test1",
             AttributeDefinitions=[
@@ -45,14 +52,18 @@ class Test_dynamodb_tables_kms_cmk_encryption_enabled:
             BillingMode="PAY_PER_REQUEST",
             SSESpecification={"Enabled": True, "KMSMasterKeyId": "/custom-kms-key"},
         )["TableDescription"]
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.dynamodb.dynamodb_service import DynamoDB
 
-        current_audit_info.audited_partition = "aws"
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.dynamodb.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_client",
-            new=DynamoDB(current_audit_info),
+            new=DynamoDB(aws_provider),
         ):
             # Test Check
             from prowler.providers.aws.services.dynamodb.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_tables_kms_cmk_encryption_enabled import (
@@ -64,13 +75,18 @@ class Test_dynamodb_tables_kms_cmk_encryption_enabled:
 
             assert len(result) == 1
             assert result[0].status == "PASS"
-            assert search("KMS encryption enabled", result[0].status_extended)
+            assert (
+                result[0].status_extended
+                == "DynamoDB table test1 has KMS encryption enabled with key custom-kms-key."
+            )
             assert result[0].resource_id == table["TableName"]
             assert result[0].resource_arn == table["TableArn"]
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_tags == []
 
-    @mock_dynamodb
+    @mock_aws
     def test_dynamodb_table_default_encryption(self):
-        dynamodb_client = client("dynamodb", region_name=AWS_REGION)
+        dynamodb_client = client("dynamodb", region_name=AWS_REGION_US_EAST_1)
         table = dynamodb_client.create_table(
             TableName="test1",
             AttributeDefinitions=[
@@ -83,14 +99,18 @@ class Test_dynamodb_tables_kms_cmk_encryption_enabled:
             ],
             BillingMode="PAY_PER_REQUEST",
         )["TableDescription"]
-        from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
         from prowler.providers.aws.services.dynamodb.dynamodb_service import DynamoDB
 
-        current_audit_info.audited_partition = "aws"
+        aws_provider = set_mocked_aws_provider(
+            [AWS_REGION_EU_WEST_1, AWS_REGION_US_EAST_1]
+        )
 
         with mock.patch(
+            "prowler.providers.common.provider.Provider.get_global_provider",
+            return_value=aws_provider,
+        ), mock.patch(
             "prowler.providers.aws.services.dynamodb.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_client",
-            new=DynamoDB(current_audit_info),
+            new=DynamoDB(aws_provider),
         ):
             # Test Check
             from prowler.providers.aws.services.dynamodb.dynamodb_tables_kms_cmk_encryption_enabled.dynamodb_tables_kms_cmk_encryption_enabled import (
@@ -102,6 +122,11 @@ class Test_dynamodb_tables_kms_cmk_encryption_enabled:
 
             assert len(result) == 1
             assert result[0].status == "FAIL"
-            assert search("DEFAULT encryption enabled", result[0].status_extended)
+            assert (
+                result[0].status_extended
+                == "DynamoDB table test1 is using DEFAULT encryption."
+            )
             assert result[0].resource_id == table["TableName"]
             assert result[0].resource_arn == table["TableArn"]
+            assert result[0].region == AWS_REGION_US_EAST_1
+            assert result[0].resource_tags == []

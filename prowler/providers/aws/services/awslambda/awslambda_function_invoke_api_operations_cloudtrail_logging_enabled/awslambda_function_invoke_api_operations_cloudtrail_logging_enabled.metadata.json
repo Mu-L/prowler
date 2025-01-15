@@ -3,13 +3,13 @@
   "CheckID": "awslambda_function_invoke_api_operations_cloudtrail_logging_enabled",
   "CheckTitle": "Check if Lambda functions invoke API operations are being recorded by CloudTrail.",
   "CheckType": [],
-  "ServiceName": "lambda",
+  "ServiceName": "awslambda",
   "SubServiceName": "",
   "ResourceIdTemplate": "arn:partition:lambda:region:account-id:function/function-name",
   "Severity": "low",
   "ResourceType": "AwsLambdaFunction",
   "Description": "Check if Lambda functions invoke API operations are being recorded by CloudTrail.",
-  "Risk": "If logs are not enabled; monitoring of service use and threat analysis is not possible.",
+  "Risk": "If logs are not enabled, monitoring of service use and threat analysis is not possible.",
   "RelatedUrl": "https://docs.aws.amazon.com/lambda/latest/dg/logging-using-cloudtrail.html",
   "Remediation": {
     "Code": {
@@ -24,7 +24,8 @@
     }
   },
   "Categories": [
-    "forensics-ready"
+    "forensics-ready",
+    "logging"
   ],
   "DependsOn": [],
   "RelatedTo": [],

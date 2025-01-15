@@ -1,4 +1,4 @@
-from prowler.providers.aws.lib.audit_info.audit_info import current_audit_info
 from prowler.providers.aws.services.cloudtrail.cloudtrail_service import Cloudtrail
+from prowler.providers.common.provider import Provider
 
-cloudtrail_client = Cloudtrail(current_audit_info)
+cloudtrail_client = Cloudtrail(Provider.get_global_provider())

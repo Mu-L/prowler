@@ -17,10 +17,10 @@ class awslambda_function_invoke_api_operations_cloudtrail_logging_enabled(Check)
 
             report.status = "FAIL"
             report.status_extended = (
-                f"Lambda function {function.name} is not recorded by CloudTrail"
+                f"Lambda function {function.name} is not recorded by CloudTrail."
             )
             lambda_recorded_cloudtrail = False
-            for trail in cloudtrail_client.trails:
+            for trail in cloudtrail_client.trails.values():
                 for data_event in trail.data_events:
                     # classic event selectors
                     if not data_event.is_advanced:
@@ -28,7 +28,8 @@ class awslambda_function_invoke_api_operations_cloudtrail_logging_enabled(Check)
                             for resource in data_event.event_selector["DataResources"]:
                                 if resource["Type"] == "AWS::Lambda::Function" and (
                                     function.arn in resource["Values"]
-                                    or "arn:aws:lambda" in resource["Values"]
+                                    or f"arn:{awslambda_client.audited_partition}:lambda"
+                                    in resource["Values"]
                                 ):
                                     lambda_recorded_cloudtrail = True
                                     break
@@ -38,8 +39,7 @@ class awslambda_function_invoke_api_operations_cloudtrail_logging_enabled(Check)
                         ]:
                             if (
                                 field_selector["Field"] == "resources.type"
-                                and field_selector["Equals"][0]
-                                == "AWS::Lambda::Function"
+                                and "AWS::Lambda::Function" in field_selector["Equals"]
                             ):
                                 lambda_recorded_cloudtrail = True
                                 break
@@ -47,7 +47,7 @@ class awslambda_function_invoke_api_operations_cloudtrail_logging_enabled(Check)
                         break
                 if lambda_recorded_cloudtrail:
                     report.status = "PASS"
-                    report.status_extended = f"Lambda function {function.name} is recorded by CloudTrail {trail.name}"
+                    report.status_extended = f"Lambda function {function.name} is recorded by CloudTrail trail {trail.name}."
                     break
             findings.append(report)
 

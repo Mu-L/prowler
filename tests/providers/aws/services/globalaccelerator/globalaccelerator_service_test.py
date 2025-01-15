@@ -1,18 +1,20 @@
 import botocore
-from boto3 import session
 from mock import patch
-from moto.core import DEFAULT_ACCOUNT_ID
+from moto import mock_aws
 
-from prowler.providers.aws.lib.audit_info.models import AWS_Audit_Info
 from prowler.providers.aws.services.globalaccelerator.globalaccelerator_service import (
     GlobalAccelerator,
 )
-
-# Mock Test Region
-AWS_REGION = "us-west-2"
+from tests.providers.aws.utils import (
+    AWS_ACCOUNT_NUMBER,
+    AWS_REGION_US_WEST_2,
+    set_mocked_aws_provider,
+)
 
 # Mocking Access Analyzer Calls
 make_api_call = botocore.client.BaseClient._make_api_call
+
+TEST_ACCELERATOR_ARN = f"arn:aws:globalaccelerator::{AWS_ACCOUNT_NUMBER}:accelerator/5555abcd-abcd-5555-abcd-5555EXAMPLE1"
 
 
 def mock_make_api_call(self, operation_name, kwarg):
@@ -21,7 +23,7 @@ def mock_make_api_call(self, operation_name, kwarg):
         return {
             "Accelerators": [
                 {
-                    "AcceleratorArn": f"arn:aws:globalaccelerator::{DEFAULT_ACCOUNT_ID}:accelerator/5555abcd-abcd-5555-abcd-5555EXAMPLE1",
+                    "AcceleratorArn": TEST_ACCELERATOR_ARN,
                     "Name": "TestAccelerator",
                     "IpAddressType": "IPV4",
                     "Enabled": True,
@@ -40,69 +42,72 @@ def mock_make_api_call(self, operation_name, kwarg):
         }
     if operation_name == "GetSubscriptionState":
         return {"SubscriptionState": "ACTIVE"}
+    if operation_name == "ListTagsForResource":
+        return {"Tags": [{"Key": "Name", "Value": "TestAccelerator"}]}
 
     return make_api_call(self, operation_name, kwarg)
 
 
+@mock_aws
 # Patch every AWS call using Boto3 and generate_regional_clients to have 1 client
 @patch("botocore.client.BaseClient._make_api_call", new=mock_make_api_call)
 class Test_GlobalAccelerator_Service:
-    # Mocked Audit Info
-    def set_mocked_audit_info(self):
-        audit_info = AWS_Audit_Info(
-            session_config=None,
-            original_session=None,
-            audit_session=session.Session(
-                profile_name=None,
-                botocore_session=None,
-            ),
-            audited_account=DEFAULT_ACCOUNT_ID,
-            audited_user_id=None,
-            audited_partition="aws",
-            audited_identity_arn=None,
-            profile=None,
-            profile_region=AWS_REGION,
-            credentials=None,
-            assumed_role_info=None,
-            audited_regions=None,
-            organizations_metadata=None,
-            audit_resources=None,
-        )
-        return audit_info
-
     # Test GlobalAccelerator Service
     def test_service(self):
         # GlobalAccelerator client for this test class
-        audit_info = self.set_mocked_audit_info()
-        globalaccelerator = GlobalAccelerator(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        globalaccelerator = GlobalAccelerator(aws_provider)
         assert globalaccelerator.service == "globalaccelerator"
 
     # Test GlobalAccelerator Client
     def test_client(self):
         # GlobalAccelerator client for this test class
-        audit_info = self.set_mocked_audit_info()
-        globalaccelerator = GlobalAccelerator(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        globalaccelerator = GlobalAccelerator(aws_provider)
         assert globalaccelerator.client.__class__.__name__ == "GlobalAccelerator"
 
     # Test GlobalAccelerator Session
     def test__get_session__(self):
         # GlobalAccelerator client for this test class
-        audit_info = self.set_mocked_audit_info()
-        globalaccelerator = GlobalAccelerator(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        globalaccelerator = GlobalAccelerator(aws_provider)
         assert globalaccelerator.session.__class__.__name__ == "Session"
 
-    def test__list_accelerators__(self):
+    def test_list_accelerators(self):
         # GlobalAccelerator client for this test class
-        audit_info = self.set_mocked_audit_info()
-        globalaccelerator = GlobalAccelerator(audit_info)
+        aws_provider = set_mocked_aws_provider()
+        globalaccelerator = GlobalAccelerator(aws_provider)
 
-        accelerator_arn = f"arn:aws:globalaccelerator::{DEFAULT_ACCOUNT_ID}:accelerator/5555abcd-abcd-5555-abcd-5555EXAMPLE1"
         accelerator_name = "TestAccelerator"
 
         assert globalaccelerator.accelerators
         assert len(globalaccelerator.accelerators) == 1
-        assert globalaccelerator.accelerators[accelerator_name]
-        assert globalaccelerator.accelerators[accelerator_name].name == accelerator_name
-        assert globalaccelerator.accelerators[accelerator_name].arn == accelerator_arn
-        assert globalaccelerator.accelerators[accelerator_name].region == AWS_REGION
-        assert globalaccelerator.accelerators[accelerator_name].enabled
+        assert globalaccelerator.accelerators[TEST_ACCELERATOR_ARN]
+        assert (
+            globalaccelerator.accelerators[TEST_ACCELERATOR_ARN].name
+            == accelerator_name
+        )
+        assert (
+            globalaccelerator.accelerators[TEST_ACCELERATOR_ARN].arn
+            == TEST_ACCELERATOR_ARN
+        )
+        assert (
+            globalaccelerator.accelerators[TEST_ACCELERATOR_ARN].region
+            == AWS_REGION_US_WEST_2
+        )
+        assert globalaccelerator.accelerators[TEST_ACCELERATOR_ARN].enabled
+
+    def test_list_tags(self):
+        # GlobalAccelerator client for this test class
+        aws_provider = set_mocked_aws_provider()
+        globalaccelerator = GlobalAccelerator(aws_provider)
+
+        assert len(globalaccelerator.accelerators) == 1
+        assert (
+            globalaccelerator.accelerators[TEST_ACCELERATOR_ARN].tags[0]["Key"]
+            == "Name"
+        )
+        assert (
+            globalaccelerator.accelerators[TEST_ACCELERATOR_ARN].tags[0]["Value"]
+            == "TestAccelerator"
+        )

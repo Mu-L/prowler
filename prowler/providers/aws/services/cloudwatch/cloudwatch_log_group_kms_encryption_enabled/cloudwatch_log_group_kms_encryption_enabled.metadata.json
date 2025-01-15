@@ -9,7 +9,7 @@
   "SubServiceName": "logs",
   "ResourceIdTemplate": "arn:partition:cloudwatch:region:account-id:certificate/resource-id",
   "Severity": "medium",
-  "ResourceType": "AwsLogsLogGroup",
+  "ResourceType": "Other",
   "Description": "Check if CloudWatch log groups are protected by AWS KMS.",
   "Risk": "Using customer managed KMS to encrypt CloudWatch log group provide additional confidentiality and control over the log data.",
   "RelatedUrl": "https://docs.aws.amazon.com/cli/latest/reference/logs/associate-kms-key.html",
@@ -17,7 +17,7 @@
     "Code": {
       "CLI": "associate-kms-key --log-group-name <value> --kms-key-id <value>",
       "NativeIaC": "",
-      "Other": "https://docs.bridgecrew.io/docs/logging_21#aws-console",
+      "Other": "https://docs.prowler.com/checks/aws/logging-policies/logging_21#aws-console",
       "Terraform": ""
     },
     "Recommendation": {

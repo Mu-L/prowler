@@ -1,6 +1,5 @@
 import shodan
 
-from prowler.config.config import get_config_var
 from prowler.lib.check.models import Check, Check_Report_AWS
 from prowler.lib.logger import logger
 from prowler.providers.aws.services.ec2.ec2_client import ec2_client
@@ -9,19 +8,16 @@ from prowler.providers.aws.services.ec2.ec2_client import ec2_client
 class ec2_elastic_ip_shodan(Check):
     def execute(self):
         findings = []
-        shodan_api_key = get_config_var("shodan_api_key")
+        shodan_api_key = ec2_client.audit_config.get("shodan_api_key")
         if shodan_api_key:
             api = shodan.Shodan(shodan_api_key)
             for eip in ec2_client.elastic_ips:
-                report = Check_Report_AWS(self.metadata())
-                report.region = eip.region
-                report.resource_arn = eip.arn
-                report.resource_tags = eip.tags
+                report = Check_Report_AWS(self.metadata(), eip)
                 if eip.public_ip:
                     try:
                         shodan_info = api.host(eip.public_ip)
                         report.status = "FAIL"
-                        report.status_extended = f"Elastic IP {eip.public_ip} listed in Shodan with open ports {str(shodan_info['ports'])} and ISP {shodan_info['isp']} in {shodan_info['country_name']}. More info https://www.shodan.io/host/{eip.public_ip}"
+                        report.status_extended = f"Elastic IP {eip.public_ip} listed in Shodan with open ports {str(shodan_info['ports'])} and ISP {shodan_info['isp']} in {shodan_info['country_name']}. More info at https://www.shodan.io/host/{eip.public_ip}."
                         report.resource_id = eip.public_ip
                         findings.append(report)
                     except shodan.APIError as error:
@@ -38,6 +34,6 @@ class ec2_elastic_ip_shodan(Check):
 
         else:
             logger.error(
-                "ERROR: No Shodan API Key -- Please input a Shodan API Key with -N/--shodan or in config.yaml"
+                "No Shodan API Key -- Please input a Shodan API Key with -N/--shodan or in config.yaml"
             )
         return findings

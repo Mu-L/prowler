@@ -1,7 +1,7 @@
 import io
 import json
-import threading
 import zipfile
+from concurrent.futures import as_completed
 from enum import Enum
 from typing import Any, Optional
 
@@ -11,45 +11,20 @@ from pydantic import BaseModel
 
 from prowler.lib.logger import logger
 from prowler.lib.scan_filters.scan_filters import is_resource_filtered
-from prowler.providers.aws.aws_provider import generate_regional_clients
+from prowler.providers.aws.lib.service.service import AWSService
 
 
-################## Lambda
-class Lambda:
-    def __init__(self, audit_info):
-        self.service = "lambda"
-        self.session = audit_info.audit_session
-        self.audited_account = audit_info.audited_account
-        self.audit_resources = audit_info.audit_resources
-        self.regional_clients = generate_regional_clients(self.service, audit_info)
+class Lambda(AWSService):
+    def __init__(self, provider):
+        # Call AWSService's __init__
+        super().__init__(__class__.__name__, provider)
         self.functions = {}
-        self.__threading_call__(self.__list_functions__)
-        self.__list_tags_for_resource__()
+        self.__threading_call__(self._list_functions)
+        self._list_tags_for_resource()
+        self.__threading_call__(self._get_policy)
+        self.__threading_call__(self._get_function_url_config)
 
-        # We only want to retrieve the Lambda code if the
-        # awslambda_function_no_secrets_in_code check is set
-        if (
-            "awslambda_function_no_secrets_in_code"
-            in audit_info.audit_metadata.expected_checks
-        ):
-            self.__threading_call__(self.__get_function__)
-
-        self.__threading_call__(self.__get_policy__)
-        self.__threading_call__(self.__get_function_url_config__)
-
-    def __get_session__(self):
-        return self.session
-
-    def __threading_call__(self, call):
-        threads = []
-        for regional_client in self.regional_clients.values():
-            threads.append(threading.Thread(target=call, args=(regional_client,)))
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-    def __list_functions__(self, regional_client):
+    def _list_functions(self, regional_client):
         logger.info("Lambda - Listing Functions...")
         try:
             list_functions_paginator = regional_client.get_paginator("list_functions")
@@ -62,18 +37,23 @@ class Lambda:
                     ):
                         lambda_name = function["FunctionName"]
                         lambda_arn = function["FunctionArn"]
-                        self.functions[lambda_name] = Function(
+                        vpc_config = function.get("VpcConfig", {})
+                        # We must use the Lambda ARN as the dict key since we could have Lambdas in different regions with the same name
+                        self.functions[lambda_arn] = Function(
                             name=lambda_name,
                             arn=lambda_arn,
+                            security_groups=vpc_config.get("SecurityGroupIds", []),
+                            vpc_id=vpc_config.get("VpcId"),
+                            subnet_ids=set(vpc_config.get("SubnetIds", [])),
                             region=regional_client.region,
                         )
                         if "Runtime" in function:
-                            self.functions[lambda_name].runtime = function["Runtime"]
+                            self.functions[lambda_arn].runtime = function["Runtime"]
                         if "Environment" in function:
                             lambda_environment = function["Environment"].get(
                                 "Variables"
                             )
-                            self.functions[lambda_name].environment = lambda_environment
+                            self.functions[lambda_arn].environment = lambda_environment
 
         except Exception as error:
             logger.error(
@@ -82,30 +62,47 @@ class Lambda:
                 f" {error}"
             )
 
-    def __get_function__(self, regional_client):
-        logger.info("Lambda - Getting Function...")
+    def _get_function_code(self):
+        logger.info("Lambda - Getting Function Code...")
+        # Use a thread pool handle the queueing and execution of the _fetch_function_code tasks, up to max_workers tasks concurrently.
+        lambda_functions_to_fetch = {
+            self.thread_pool.submit(
+                self._fetch_function_code, function.name, function.region
+            ): function
+            for function in self.functions.values()
+        }
+
+        for fetched_lambda_code in as_completed(lambda_functions_to_fetch):
+            function = lambda_functions_to_fetch[fetched_lambda_code]
+            try:
+                function_code = fetched_lambda_code.result()
+                if function_code:
+                    yield function, function_code
+            except Exception as error:
+                logger.error(
+                    f"{function.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
+                )
+
+    def _fetch_function_code(self, function_name, function_region):
         try:
-            for function in self.functions.values():
-                if function.region == regional_client.region:
-                    function_information = regional_client.get_function(
-                        FunctionName=function.name
-                    )
-                    if "Location" in function_information["Code"]:
-                        code_location_uri = function_information["Code"]["Location"]
-                        raw_code_zip = requests.get(code_location_uri).content
-                        self.functions[function.name].code = LambdaCode(
-                            location=code_location_uri,
-                            code_zip=zipfile.ZipFile(io.BytesIO(raw_code_zip)),
-                        )
-
+            regional_client = self.regional_clients[function_region]
+            function_information = regional_client.get_function(
+                FunctionName=function_name
+            )
+            if "Location" in function_information["Code"]:
+                code_location_uri = function_information["Code"]["Location"]
+                raw_code_zip = requests.get(code_location_uri).content
+                return LambdaCode(
+                    location=code_location_uri,
+                    code_zip=zipfile.ZipFile(io.BytesIO(raw_code_zip)),
+                )
         except Exception as error:
             logger.error(
-                f"{regional_client.region} --"
-                f" {error.__class__.__name__}[{error.__traceback__.tb_lineno}]:"
-                f" {error}"
+                f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
             )
+            raise
 
-    def __get_policy__(self, regional_client):
+    def _get_policy(self, regional_client):
         logger.info("Lambda - Getting Policy...")
         try:
             for function in self.functions.values():
@@ -114,12 +111,12 @@ class Lambda:
                         function_policy = regional_client.get_policy(
                             FunctionName=function.name
                         )
-                        self.functions[function.name].policy = json.loads(
+                        self.functions[function.arn].policy = json.loads(
                             function_policy["Policy"]
                         )
                     except ClientError as e:
                         if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                            self.functions[function.name].policy = {}
+                            self.functions[function.arn].policy = {}
 
         except Exception as error:
             logger.error(
@@ -128,7 +125,7 @@ class Lambda:
                 f" {error}"
             )
 
-    def __get_function_url_config__(self, regional_client):
+    def _get_function_url_config(self, regional_client):
         logger.info("Lambda - Getting Function URL Config...")
         try:
             for function in self.functions.values():
@@ -141,14 +138,14 @@ class Lambda:
                             allow_origins = function_url_config["Cors"]["AllowOrigins"]
                         else:
                             allow_origins = []
-                        self.functions[function.name].url_config = URLConfig(
+                        self.functions[function.arn].url_config = URLConfig(
                             auth_type=function_url_config["AuthType"],
                             url=function_url_config["FunctionUrl"],
                             cors_config=URLConfigCORS(allow_origins=allow_origins),
                         )
                     except ClientError as e:
                         if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                            self.functions[function.name].url_config = None
+                            self.functions[function.arn].url_config = None
 
         except Exception as error:
             logger.error(
@@ -157,13 +154,18 @@ class Lambda:
                 f" {error}"
             )
 
-    def __list_tags_for_resource__(self):
+    def _list_tags_for_resource(self):
         logger.info("Lambda - List Tags...")
         try:
             for function in self.functions.values():
-                regional_client = self.regional_clients[function.region]
-                response = regional_client.list_tags(Resource=function.arn)["Tags"]
-                function.tags = [response]
+                try:
+                    regional_client = self.regional_clients[function.region]
+                    response = regional_client.list_tags(Resource=function.arn)["Tags"]
+                    function.tags = [response]
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                        function.tags = []
+
         except Exception as error:
             logger.error(
                 f"{regional_client.region} -- {error.__class__.__name__}[{error.__traceback__.tb_lineno}]: {error}"
@@ -193,10 +195,13 @@ class URLConfig(BaseModel):
 class Function(BaseModel):
     name: str
     arn: str
+    security_groups: list
     runtime: Optional[str]
     environment: dict = None
     region: str
     policy: dict = None
     code: LambdaCode = None
     url_config: URLConfig = None
+    vpc_id: Optional[str]
+    subnet_ids: Optional[set]
     tags: Optional[list] = []

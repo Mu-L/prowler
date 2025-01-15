@@ -10,6 +10,7 @@ class route53_public_hosted_zones_cloudwatch_logging_enabled(Check):
             if not hosted_zone.private_zone:
                 report = Check_Report_AWS(self.metadata())
                 report.resource_id = hosted_zone.id
+                report.resource_arn = hosted_zone.arn
                 report.resource_tags = hosted_zone.tags
                 report.region = hosted_zone.region
                 if (
@@ -17,11 +18,11 @@ class route53_public_hosted_zones_cloudwatch_logging_enabled(Check):
                     and hosted_zone.logging_config.cloudwatch_log_group_arn
                 ):
                     report.status = "PASS"
-                    report.status_extended = f"Route53 Public Hosted Zone {hosted_zone.id} has query logging enabled in Log Group {hosted_zone.logging_config.cloudwatch_log_group_arn}"
+                    report.status_extended = f"Route53 Public Hosted Zone {hosted_zone.id} has query logging enabled in Log Group {hosted_zone.logging_config.cloudwatch_log_group_arn}."
 
                 else:
                     report.status = "FAIL"
-                    report.status_extended = f"Route53 Public Hosted Zone {hosted_zone.id} has query logging disabled"
+                    report.status_extended = f"Route53 Public Hosted Zone {hosted_zone.id} has query logging disabled."
 
                 findings.append(report)
 
