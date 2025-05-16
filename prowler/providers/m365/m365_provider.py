@@ -33,7 +33,6 @@ from prowler.providers.m365.exceptions.exceptions import (
     M365ConfigCredentialsError,
     M365CredentialsUnavailableError,
     M365DefaultAzureCredentialError,
-    M365EnvironmentUserCredentialsError,
     M365EnvironmentVariableError,
     M365GetTokenIdentityError,
     M365HTTPResponseError,
@@ -51,9 +50,13 @@ from prowler.providers.m365.exceptions.exceptions import (
     M365SetUpSessionError,
     M365TenantIdAndClientIdNotBelongingToClientSecretError,
     M365TenantIdAndClientSecretNotBelongingToClientIdError,
+    M365UserCredentialsError,
 )
 from prowler.providers.m365.lib.mutelist.mutelist import M365Mutelist
-from prowler.providers.m365.lib.powershell.m365_powershell import M365PowerShell
+from prowler.providers.m365.lib.powershell.m365_powershell import (
+    M365PowerShell,
+    initialize_m365_powershell_modules,
+)
 from prowler.providers.m365.lib.regions.regions import get_regions_config
 from prowler.providers.m365.models import (
     M365Credentials,
@@ -100,7 +103,7 @@ class M365Provider(Provider):
     _audit_config: dict
     _region_config: M365RegionConfig
     _mutelist: M365Mutelist
-    _credentials: M365Credentials
+    _credentials: M365Credentials = {}
     # TODO: this is not optional, enforce for all providers
     audit_metadata: Audit_Metadata
 
@@ -115,6 +118,7 @@ class M365Provider(Provider):
         client_secret: str = None,
         user: str = None,
         encrypted_password: str = None,
+        init_modules: bool = False,
         region: str = "M365Global",
         config_content: dict = None,
         config_path: str = None,
@@ -202,6 +206,8 @@ class M365Provider(Provider):
             env_auth=env_auth,
             m365_credentials=m365_credentials,
             provider_id=self.identity.tenant_domain,
+            init_modules=init_modules,
+            identity=self.identity,
         )
 
         # Audit Config
@@ -373,7 +379,11 @@ class M365Provider(Provider):
 
     @staticmethod
     def setup_powershell(
-        env_auth: bool = False, m365_credentials: dict = {}, provider_id: str = None
+        env_auth: bool = False,
+        m365_credentials: dict = {},
+        provider_id: str = None,
+        init_modules: bool = False,
+        identity: M365IdentityInfo = None,
     ) -> M365Credentials:
         """Gets the M365 credentials.
 
@@ -386,6 +396,7 @@ class M365Provider(Provider):
                 If False, returns empty credentials.
         """
         credentials = None
+
         if m365_credentials:
             credentials = M365Credentials(
                 user=m365_credentials.get("user", ""),
@@ -420,13 +431,18 @@ class M365Provider(Provider):
             )
 
         if credentials:
+            if identity:
+                identity.identity_type = "Service Principal and User Credentials"
+                identity.user = credentials.user
             test_session = M365PowerShell(credentials)
             try:
                 if test_session.test_credentials(credentials):
+                    if init_modules:
+                        initialize_m365_powershell_modules()
                     return credentials
-                raise M365EnvironmentUserCredentialsError(
+                raise M365UserCredentialsError(
                     file=os.path.basename(__file__),
-                    message="M365_USER or M365_ENCRYPTED_PASSWORD environment variables are not correct. Please ensure you are using the right credentials.",
+                    message="The provided User credentials are not valid.",
                 )
             finally:
                 test_session.close()
@@ -447,8 +463,11 @@ class M365Provider(Provider):
             f"M365 Region: {Fore.YELLOW}{self.region_config.name}{Style.RESET_ALL}",
             f"M365 Tenant Domain: {Fore.YELLOW}{self._identity.tenant_domain}{Style.RESET_ALL} M365 Tenant ID: {Fore.YELLOW}{self._identity.tenant_id}{Style.RESET_ALL}",
             f"M365 Identity Type: {Fore.YELLOW}{self._identity.identity_type}{Style.RESET_ALL} M365 Identity ID: {Fore.YELLOW}{self._identity.identity_id}{Style.RESET_ALL}",
-            f"M365 User: {Fore.YELLOW}{self.credentials.user}{Style.RESET_ALL}",
         ]
+        if self.credentials and self.credentials.user:
+            report_lines.append(
+                f"M365 User: {Fore.YELLOW}{self.credentials.user}{Style.RESET_ALL}"
+            )
         report_title = (
             f"{Style.BRIGHT}Using the M365 credentials below:{Style.RESET_ALL}"
         )
@@ -603,12 +622,12 @@ class M365Provider(Provider):
         browser_auth: bool = False,
         tenant_id: str = None,
         region: str = "M365Global",
-        raise_on_exception=True,
-        client_id=None,
-        client_secret=None,
-        user=None,
-        encrypted_password=None,
-        provider_id=None,
+        raise_on_exception: bool = True,
+        client_id: str = None,
+        client_secret: str = None,
+        user: str = None,
+        encrypted_password: str = None,
+        provider_id: str = None,
     ) -> Connection:
         """Test connection to M365 tenant and PowerShell modules.
 
@@ -981,7 +1000,7 @@ class M365Provider(Provider):
         except ValueError:
             raise M365NotValidTenantIdError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Tenant ID is not valid.",
+                message="The provided Tenant ID is not valid.",
             )
 
         # Validate the Client ID
@@ -990,28 +1009,28 @@ class M365Provider(Provider):
         except ValueError:
             raise M365NotValidClientIdError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Client ID is not valid.",
+                message="The provided Client ID is not valid.",
             )
 
         # Validate the Client Secret
         if not client_secret:
             raise M365NotValidClientSecretError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Client Secret is not valid.",
+                message="The provided Client Secret is not valid.",
             )
 
         # Validate the User
         if not user:
             raise M365NotValidUserError(
                 file=os.path.basename(__file__),
-                message="The provided M365 User is not valid.",
+                message="The provided User is not valid.",
             )
 
         # Validate the Encrypted Password
         if not encrypted_password:
             raise M365NotValidEncryptedPasswordError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Encrypted Password is not valid.",
+                message="The provided Encrypted Password is not valid.",
             )
 
         try:
@@ -1029,7 +1048,7 @@ class M365Provider(Provider):
             )
             raise M365ClientIdAndClientSecretNotBelongingToTenantIdError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Client ID and Client Secret do not belong to the specified Tenant ID.",
+                message="The provided Client ID and Client Secret do not belong to the specified Tenant ID.",
             )
         except M365NotValidClientIdError as client_id_error:
             logger.error(
@@ -1037,7 +1056,7 @@ class M365Provider(Provider):
             )
             raise M365TenantIdAndClientSecretNotBelongingToClientIdError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Tenant ID and Client Secret do not belong to the specified Client ID.",
+                message="The provided Tenant ID and Client Secret do not belong to the specified Client ID.",
             )
         except M365NotValidClientSecretError as client_secret_error:
             logger.error(
@@ -1045,7 +1064,7 @@ class M365Provider(Provider):
             )
             raise M365TenantIdAndClientIdNotBelongingToClientSecretError(
                 file=os.path.basename(__file__),
-                message="The provided M365 Tenant ID and Client ID do not belong to the specified Client Secret.",
+                message="The provided Tenant ID and Client ID do not belong to the specified Client Secret.",
             )
 
     @staticmethod
@@ -1087,19 +1106,25 @@ class M365Provider(Provider):
                 if f"Tenant '{tenant_id}'" in error_description:
                     raise M365NotValidTenantIdError(
                         file=os.path.basename(__file__),
-                        message="The provided Microsoft 365 Tenant ID is not valid for the specified Client ID and Client Secret.",
+                        message="The provided Tenant ID is not valid for the specified Client ID and Client Secret.",
                     )
                 if f"Application with identifier '{client_id}'" in error_description:
                     raise M365NotValidClientIdError(
                         file=os.path.basename(__file__),
-                        message="The provided Microsoft 365 Client ID is not valid for the specified Tenant ID and Client Secret.",
+                        message="The provided Client ID is not valid for the specified Tenant ID and Client Secret.",
                     )
                 if "Invalid client secret provided" in error_description:
                     raise M365NotValidClientSecretError(
                         file=os.path.basename(__file__),
-                        message="The provided Microsoft 365 Client Secret is not valid for the specified Tenant ID and Client ID.",
+                        message="The provided Client Secret is not valid for the specified Tenant ID and Client ID.",
                     )
-
-        except Exception as e:
-            # Generic exception handling (if needed)
-            raise RuntimeError(f"An unexpected error occurred: {str(e)}")
+        except (
+            M365NotValidTenantIdError,
+            M365NotValidClientIdError,
+            M365NotValidClientSecretError,
+        ) as m365_error:
+            # M365 specific errors already raised
+            raise RuntimeError(f"{m365_error}")
+        except Exception as error:
+            # Generic exception handling for unexpected errors
+            raise RuntimeError(f"An unexpected error occurred: {str(error)}")

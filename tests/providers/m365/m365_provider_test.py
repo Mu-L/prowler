@@ -449,9 +449,11 @@ class TestM365Provider:
             "client_secret": "test_client_secret",
         }
 
-        with patch(
-            "prowler.providers.m365.lib.powershell.m365_powershell.M365PowerShell.test_credentials",
-            return_value=True,
+        with (
+            patch(
+                "prowler.providers.m365.lib.powershell.m365_powershell.M365PowerShell.test_credentials",
+                return_value=True,
+            ),
         ):
             result = M365Provider.setup_powershell(
                 env_auth=False,
@@ -520,7 +522,7 @@ class TestM365Provider:
                 user="test@example.com",
                 encrypted_password="test_password",
             )
-        assert "The provided M365 Tenant ID is not valid." in str(exception.value)
+        assert "The provided Tenant ID is not valid." in str(exception.value)
 
     def test_validate_static_credentials_missing_client_id(self):
         with pytest.raises(M365NotValidClientIdError) as exception:
@@ -531,7 +533,7 @@ class TestM365Provider:
                 user="test@example.com",
                 encrypted_password="test_password",
             )
-        assert "The provided M365 Client ID is not valid." in str(exception.value)
+        assert "The provided Client ID is not valid." in str(exception.value)
 
     def test_validate_static_credentials_missing_client_secret(self):
         with pytest.raises(M365NotValidClientSecretError) as exception:
@@ -542,7 +544,7 @@ class TestM365Provider:
                 user="test@example.com",
                 encrypted_password="test_password",
             )
-        assert "The provided M365 Client Secret is not valid." in str(exception.value)
+        assert "The provided Client Secret is not valid." in str(exception.value)
 
     def test_validate_static_credentials_missing_user(self):
         with pytest.raises(M365NotValidUserError) as exception:
@@ -553,7 +555,7 @@ class TestM365Provider:
                 user="",
                 encrypted_password="test_password",
             )
-        assert "The provided M365 User is not valid." in str(exception.value)
+        assert "The provided User is not valid." in str(exception.value)
 
     def test_validate_static_credentials_missing_encrypted_password(self):
         with pytest.raises(M365NotValidEncryptedPasswordError) as exception:
@@ -564,9 +566,7 @@ class TestM365Provider:
                 user="test@example.com",
                 encrypted_password="",
             )
-        assert "The provided M365 Encrypted Password is not valid." in str(
-            exception.value
-        )
+        assert "The provided Encrypted Password is not valid." in str(exception.value)
 
     def test_validate_arguments_missing_env_credentials(self):
         with pytest.raises(M365MissingEnvironmentCredentialsError) as exception:
@@ -581,6 +581,7 @@ class TestM365Provider:
                 user=None,
                 encrypted_password=None,
             )
+
         assert (
             "M365 provider requires AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, M365_USER and M365_ENCRYPTED_PASSWORD environment variables to be set when using --env-auth"
             in str(exception.value)
@@ -622,3 +623,87 @@ class TestM365Provider:
                 f"Provider ID {provider_id} does not match Application tenant domain {user_domain}"
                 in str(exception.value)
             )
+
+    def test_provider_init_modules_false(self):
+        """Test that initialize_m365_powershell_modules is not called when init_modules is False"""
+        credentials_dict = {
+            "user": "test@example.com",
+            "encrypted_password": "test_password",
+            "client_id": "test_client_id",
+            "tenant_id": "test_tenant_id",
+            "client_secret": "test_client_secret",
+        }
+
+        with (
+            patch(
+                "prowler.providers.m365.lib.powershell.m365_powershell.M365PowerShell.test_credentials",
+                return_value=True,
+            ),
+            patch(
+                "prowler.providers.m365.m365_provider.initialize_m365_powershell_modules"
+            ) as mock_init_modules,
+        ):
+            M365Provider.setup_powershell(
+                env_auth=False,
+                m365_credentials=credentials_dict,
+                provider_id="test_provider_id",
+                init_modules=False,
+            )
+            mock_init_modules.assert_not_called()
+
+    def test_provider_init_modules_true(self):
+        """Test that initialize_m365_powershell_modules is called when init_modules is True"""
+        credentials_dict = {
+            "user": "test@example.com",
+            "encrypted_password": "test_password",
+            "client_id": "test_client_id",
+            "tenant_id": "test_tenant_id",
+            "client_secret": "test_client_secret",
+        }
+
+        with (
+            patch(
+                "prowler.providers.m365.lib.powershell.m365_powershell.M365PowerShell.test_credentials",
+                return_value=True,
+            ),
+            patch(
+                "prowler.providers.m365.m365_provider.initialize_m365_powershell_modules"
+            ) as mock_init_modules,
+        ):
+            M365Provider.setup_powershell(
+                env_auth=False,
+                m365_credentials=credentials_dict,
+                provider_id="test_provider_id",
+                init_modules=True,
+            )
+            mock_init_modules.assert_called_once()
+
+    def test_setup_powershell_init_modules_failure(self):
+        """Test that setup_powershell handles initialization failures correctly"""
+        credentials_dict = {
+            "user": "test@example.com",
+            "encrypted_password": "test_password",
+            "client_id": "test_client_id",
+            "tenant_id": "test_tenant_id",
+            "client_secret": "test_client_secret",
+        }
+
+        with (
+            patch(
+                "prowler.providers.m365.lib.powershell.m365_powershell.M365PowerShell.test_credentials",
+                return_value=True,
+            ),
+            patch(
+                "prowler.providers.m365.m365_provider.initialize_m365_powershell_modules",
+                side_effect=Exception("Module initialization failed"),
+            ),
+        ):
+            with pytest.raises(Exception) as exc_info:
+                M365Provider.setup_powershell(
+                    env_auth=False,
+                    m365_credentials=credentials_dict,
+                    provider_id="test_provider_id",
+                    init_modules=True,
+                )
+
+            assert str(exc_info.value) == "Module initialization failed"
